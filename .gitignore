@@ -1,0 +1,13 @@
+# 依赖
+node_modules/
+
+# 测试产生的生产数据备份（含真实记忆/账本副本，禁止入库）
+scripts/backup-*/
+
+# 日志与临时文件
+*.log
+*.tmp
+
+# 生态工具（独立仓库，不属分身套件核心）
+dsh-plugin-manager/
+dsh-remote/

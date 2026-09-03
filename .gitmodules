@@ -1,0 +1,27 @@
+[submodule "dsh-twin"]
+	path = dsh-twin
+	url = https://github.com/lomehong/dsh-twin.git
+[submodule "dsh-memory"]
+	path = dsh-memory
+	url = https://github.com/lomehong/dsh-memory.git
+[submodule "dsh-ledger"]
+	path = dsh-ledger
+	url = https://github.com/lomehong/dsh-ledger.git
+[submodule "dsh-regression"]
+	path = dsh-regression
+	url = https://github.com/lomehong/dsh-regression.git
+[submodule "dsh-actors"]
+	path = dsh-actors
+	url = https://github.com/lomehong/dsh-actors.git
+[submodule "dsh-im-bot"]
+	path = dsh-im-bot
+	url = https://github.com/lomehong/dsh-im-bot.git
+[submodule "dsh-computer"]
+	path = dsh-computer
+	url = https://github.com/lomehong/dsh-computer.git
+[submodule "dsh-redact"]
+	path = dsh-redact
+	url = https://github.com/lomehong/dsh-redact.git
+[submodule "dsh-yuyi"]
+	path = dsh-yuyi
+	url = https://github.com/lomehong/dsh-yuyi.git

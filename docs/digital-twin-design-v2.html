@@ -1,0 +1,374 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>数字分身 · V2 阶段设计（越用越像）</title>
+<style>
+  :root {
+    --ink: #1b2333;
+    --muted: #5b6478;
+    --faint: #8a92a6;
+    --accent: #3f51c1;
+    --accent-soft: #eef0fb;
+    --accent-line: #c9cff2;
+    --line: #e4e7ef;
+    --bg: #f7f8fb;
+    --card: #ffffff;
+    --good: #1d7a53;
+    --good-soft: #e9f5ef;
+    --warn: #b06a1f;
+    --warn-soft: #fbf3e7;
+    --bad: #b03a44;
+    --bad-soft: #faeced;
+    --code-bg: #f2f3f8;
+  }
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body {
+    margin: 0; background: var(--bg); color: var(--ink);
+    font-family: "Segoe UI", "PingFang SC", "Microsoft YaHei", "Source Han Sans SC", sans-serif;
+    font-size: 16px; line-height: 1.85; -webkit-font-smoothing: antialiased;
+  }
+  .layout { display: flex; max-width: 1240px; margin: 0 auto; gap: 48px; padding: 0 32px; align-items: flex-start; }
+  nav.toc { position: sticky; top: 0; width: 236px; flex-shrink: 0; padding: 48px 0; max-height: 100vh; overflow-y: auto; font-size: 13.5px; line-height: 1.5; }
+  nav.toc .toc-title { font-weight: 700; color: var(--faint); letter-spacing: .12em; font-size: 11.5px; margin-bottom: 14px; }
+  nav.toc a { display: block; color: var(--muted); text-decoration: none; padding: 5px 10px; border-left: 2px solid transparent; border-radius: 0 6px 6px 0; }
+  nav.toc a:hover { color: var(--accent); background: var(--accent-soft); }
+  main { flex: 1; min-width: 0; max-width: 880px; padding: 48px 0 96px; }
+  header.doc-head { border-bottom: 3px solid var(--ink); padding-bottom: 28px; margin-bottom: 40px; }
+  header.doc-head h1 { font-size: 32px; line-height: 1.3; margin: 0 0 10px; }
+  header.doc-head .subtitle { color: var(--muted); font-size: 16.5px; margin-bottom: 18px; }
+  header.doc-head .meta { display: flex; gap: 10px; flex-wrap: wrap; }
+  .chip { font-size: 12px; color: var(--muted); background: var(--card); border: 1px solid var(--line); border-radius: 999px; padding: 3px 12px; }
+  section { margin-bottom: 52px; }
+  h2 { font-size: 22px; margin: 0 0 6px; padding-top: 8px; }
+  h2 .no { color: var(--accent); font-variant-numeric: tabular-nums; margin-right: 10px; }
+  .lead { color: var(--muted); font-size: 15.5px; margin: 0 0 18px; }
+  h3 { font-size: 17px; margin: 28px 0 10px; }
+  h3 .tag { display: inline-block; font-size: 11px; font-weight: 600; color: var(--accent); background: var(--accent-soft); border-radius: 4px; padding: 1px 8px; margin-right: 8px; vertical-align: 2px; letter-spacing: .05em; }
+  p { margin: 0 0 14px; }
+  strong { font-weight: 650; }
+  em { font-style: normal; color: var(--accent); font-weight: 600; }
+  table { width: 100%; border-collapse: collapse; background: var(--card); border: 1px solid var(--line); border-radius: 12px; overflow: hidden; margin: 16px 0; font-size: 13.5px; }
+  th { text-align: left; background: var(--accent-soft); color: var(--ink); font-weight: 650; padding: 9px 13px; border-bottom: 1px solid var(--accent-line); }
+  td { padding: 9px 13px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  tr:last-child td { border-bottom: none; }
+  td.dim { color: var(--muted); }
+  pre { background: var(--code-bg); border: 1px solid var(--line); border-radius: 10px; padding: 15px 17px; overflow-x: auto; font-size: 12.5px; line-height: 1.7; margin: 14px 0; }
+  code { font-family: "Cascadia Code", Consolas, "JetBrains Mono", monospace; }
+  p code, li code, td code { background: var(--code-bg); border: 1px solid var(--line); border-radius: 5px; padding: 1px 6px; font-size: 12.5px; }
+  pre .cm { color: var(--faint); }
+  pre .ky { color: var(--accent); font-weight: 600; }
+  .callout { background: var(--card); border: 1px solid var(--line); border-left: 4px solid var(--accent); border-radius: 10px; padding: 16px 20px; margin: 18px 0; font-size: 14.5px; }
+  .callout .c-title { font-weight: 700; margin-bottom: 4px; color: var(--accent); }
+  .quote-big { font-size: 19px; line-height: 1.75; font-weight: 600; border-left: 4px solid var(--accent); background: linear-gradient(90deg, var(--accent-soft), transparent 80%); border-radius: 0 12px 12px 0; padding: 18px 24px; margin: 22px 0; }
+  .cards-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin: 18px 0; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 16px 19px; }
+  .card .k { font-weight: 700; font-size: 15px; margin-bottom: 6px; }
+  .card .k .badge { font-size: 10.5px; font-weight: 600; color: var(--faint); border: 1px solid var(--line); border-radius: 999px; padding: 1px 8px; white-space: nowrap; }
+  .card p { font-size: 14px; color: var(--muted); line-height: 1.75; margin-bottom: 8px; }
+  .num-steps { counter-reset: step; margin: 16px 0; padding: 0; list-style: none; }
+  .num-steps li { counter-increment: step; position: relative; padding: 0 0 14px 46px; }
+  .num-steps li::before { content: counter(step); position: absolute; left: 0; top: 2px; width: 28px; height: 28px; border-radius: 50%; background: var(--accent); color: #fff; font-size: 14px; font-weight: 700; display: flex; align-items: center; justify-content: center; }
+  .num-steps li b { display: block; margin-bottom: 2px; }
+  .num-steps li .d { color: var(--muted); font-size: 14px; }
+  .diagram-wrap { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 16px 12px 6px; margin: 18px 0; }
+  .diagram-wrap svg { width: 100%; height: auto; display: block; }
+  .diagram-cap { text-align: center; color: var(--faint); font-size: 12.5px; padding: 8px 0 10px; }
+  footer.doc-foot { border-top: 1px solid var(--line); color: var(--faint); font-size: 12.5px; padding-top: 18px; display: flex; justify-content: space-between; flex-wrap: wrap; gap: 8px; }
+  @media (max-width: 1000px) { nav.toc { display: none; } .cards-2 { grid-template-columns: 1fr; } }
+  @media print { body { background: #fff; font-size: 12px; } nav.toc { display: none; } .layout { display: block; padding: 0; } main { max-width: none; padding: 0; } }
+</style>
+</head>
+<body>
+<div class="layout">
+
+<nav class="toc">
+  <div class="toc-title">目 录</div>
+  <a href="#s1">1 · 阶段定位</a>
+  <a href="#s2">2 · 总览：三条主线一个底座</a>
+  <a href="#s3">3 · 主线一：学习闭环</a>
+  <a href="#s4">4 · 主线二：样例引擎</a>
+  <a href="#s5">5 · 主线三：关系档案</a>
+  <a href="#s6">6 · 底座：影子测试与 HostRunner</a>
+  <a href="#s7">7 · 数据模型增量</a>
+  <a href="#s8">8 · 组件落点与接缝</a>
+  <a href="#s9">9 · 验收指标（v2 口径）</a>
+  <a href="#s10">10 · 边界与不做的事</a>
+  <a href="#s11">11 · 实施分期</a>
+</nav>
+
+<main>
+
+<header class="doc-head">
+  <h1>数字分身 · V2 阶段设计</h1>
+  <div class="subtitle">「越用越像」：把主人的每一次纠正与每一次交往，安全地变成分身的能力</div>
+  <div class="meta">
+    <span class="chip">版本 v0.1 · 设计稿</span>
+    <span class="chip">日期 2026-09-02</span>
+    <span class="chip">上游：设计文档 v0.2 §4.4/§4.6 · 实施方案 v1（已交付）</span>
+    <span class="chip">范围：学习闭环 · 样例引擎 · 关系档案 · 影子测试底座</span>
+  </div>
+</header>
+
+<!-- ══ 1 ══ -->
+<section id="s1">
+  <h2><span class="no">1</span>阶段定位</h2>
+  <p class="lead">v1 回答了"敢不敢用它"；v2 回答"它会不会越来越对"。</p>
+  <p>v1「可托付」交付了权限、身份、审计与人格的四张卡表达。<strong>v2 打开成长通路</strong>：让分身从主人的纠正、真实交往与历史语料中变得保真，同时严守 v0.2 设计确立的纪律——只做确认式学习，永不做隐式漂移。</p>
+
+  <p>v1 已经为 v2 预埋了全部地基，本阶段是把这些接缝上的<strong>应用层</strong>建起来：</p>
+  <table>
+    <tr><th style="width:34%">v1 已交付的地基</th><th>v2 在其上建什么</th></tr>
+    <tr><td class="dim">账本 <code>outcome.masterFeedback</code>（认可/推翻）</td><td class="dim">否决信号 → 策略卡修订建议的学习路由</td></tr>
+    <tr><td class="dim">记忆 <code>support</code> 支持度轨道 + <code>relation</code> 关系轨（观察/推断/开环）</td><td class="dim">关系档案视图 + 装配自动回注 + 推断转正流</td></tr>
+    <tr><td class="dim">四张卡 <code>exemplars</code>（source: 语料|纠正, confirmedAt）+ 修订快照</td><td class="dim">样例引擎：挖掘 → 候选池 → 确认入卡</td></tr>
+    <tr><td class="dim">dsh-regression 场景集 + 评估纯函数 + HostRunner 接口</td><td class="dim">影子测试协议 + HostRunner 会话 API 落地</td></tr>
+  </table>
+  <p><strong>阶段目标（设计 v2 验收口径的定性表述）</strong>：纠正 → 入卡全链路版本化可回溯；同一客户第三次来访，分身记得前两次；影子盲测的分辨不出率持续上升且有度量。</p>
+</section>
+
+<!-- ══ 2 ══ -->
+<section id="s2">
+  <h2><span class="no">2</span>总览：三条主线一个底座</h2>
+
+  <div class="diagram-wrap">
+    <svg viewBox="0 0 940 452" xmlns="http://www.w3.org/2000/svg" font-family="inherit">
+      <defs>
+        <marker id="v2a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10z" fill="#3f51c1"/></marker>
+        <marker id="v2b" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10z" fill="#8a92a6"/></marker>
+      </defs>
+      <!-- 信号源 -->
+      <rect x="24" y="30" width="200" height="58" rx="10" fill="#f7f8fb" stroke="#c9cff2" stroke-width="1.5"/>
+      <text x="124" y="55" text-anchor="middle" font-size="15" font-weight="700" fill="#1b2333">主人纠正</text>
+      <text x="124" y="75" text-anchor="middle" font-size="12" fill="#8a92a6">会话内「这话不该这么回」</text>
+      <rect x="24" y="112" width="200" height="58" rx="10" fill="#f7f8fb" stroke="#c9cff2" stroke-width="1.5"/>
+      <text x="124" y="137" text-anchor="middle" font-size="15" font-weight="700" fill="#1b2333">账本否决</text>
+      <text x="124" y="157" text-anchor="middle" font-size="12" fill="#8a92a6">outcome.masterFeedback = 推翻</text>
+      <rect x="24" y="194" width="200" height="58" rx="10" fill="#f7f8fb" stroke="#c9cff2" stroke-width="1.5"/>
+      <text x="124" y="219" text-anchor="middle" font-size="15" font-weight="700" fill="#1b2333">主人真实语料</text>
+      <text x="124" y="239" text-anchor="middle" font-size="12" fill="#8a92a6">经授权的历史对话（inbox 语义）</text>
+      <!-- 学习闭环 -->
+      <rect x="300" y="88" width="200" height="116" rx="12" fill="#eef0fb" stroke="#3f51c1" stroke-width="2"/>
+      <text x="400" y="122" text-anchor="middle" font-size="16" font-weight="700" fill="#3f51c1">学习闭环</text>
+      <text x="400" y="146" text-anchor="middle" font-size="12" fill="#5b6478">信号分类 → 证据权重门槛</text>
+      <text x="400" y="166" text-anchor="middle" font-size="12" fill="#5b6478">→ 候选修订 → 主人确认</text>
+      <text x="400" y="186" text-anchor="middle" font-size="12" fill="#5b6478">→ 回归 → 入卡</text>
+      <line x1="224" y1="141" x2="296" y2="141" stroke="#3f51c1" stroke-width="2" marker-end="url(#v2a)"/>
+      <!-- 虚线：事实性纠错写回记忆（直角路径） -->
+      <path d="M 400 206 L 400 334 L 668 334" fill="none" stroke="#8a92a6" stroke-width="1.6" stroke-dasharray="6 5" marker-end="url(#v2b)"/>
+      <text x="505" y="322" font-size="12" fill="#8a92a6">事实性纠错写回记忆</text>
+      <!-- 样例引擎 -->
+      <rect x="576" y="88" width="180" height="116" rx="12" fill="#eef0fb" stroke="#3f51c1" stroke-width="2"/>
+      <text x="666" y="122" text-anchor="middle" font-size="16" font-weight="700" fill="#3f51c1">样例引擎</text>
+      <text x="666" y="146" text-anchor="middle" font-size="12" fill="#5b6478">语料 → 候选样例池</text>
+      <text x="666" y="166" text-anchor="middle" font-size="12" fill="#5b6478">→ 脱敏 → 确认 → 样例卡</text>
+      <line x1="504" y1="146" x2="572" y2="146" stroke="#3f51c1" stroke-width="2" marker-end="url(#v2a)"/>
+      <text x="538" y="136" text-anchor="middle" font-size="12" fill="#5b6478">纠正</text>
+      <!-- 关系档案（右下） -->
+      <rect x="680" y="286" width="200" height="96" rx="12" fill="#f7f8fb" stroke="#c9cff2" stroke-width="1.5"/>
+      <text x="780" y="316" text-anchor="middle" font-size="16" font-weight="700" fill="#1b2333">关系档案</text>
+      <text x="780" y="338" text-anchor="middle" font-size="12" fill="#5b6478">观察 · 推断 · 开环 · 支持度</text>
+      <text x="780" y="358" text-anchor="middle" font-size="12" fill="#5b6478">装配自动回注（记得住）</text>
+      <!-- 影子底座（左下） -->
+      <rect x="60" y="352" width="380" height="66" rx="12" fill="#1b2333"/>
+      <text x="250" y="378" text-anchor="middle" font-size="14" font-weight="700" fill="#fff">影子测试底座</text>
+      <text x="250" y="398" text-anchor="middle" font-size="11.5" fill="#aeb6cf">HostRunner 会话 API（真实模型盲测）</text>
+      <text x="250" y="413" text-anchor="middle" font-size="10.5" fill="#8a92a6">v1 遗留项升格为 v2 前置任务</text>
+      <!-- 产出 -->
+      <line x1="756" y1="146" x2="830" y2="146" stroke="#3f51c1" stroke-width="2" marker-end="url(#v2a)"/>
+      <rect x="834" y="112" width="88" height="68" rx="10" fill="#1d7a53"/>
+      <text x="878" y="140" text-anchor="middle" font-size="13.5" font-weight="700" fill="#fff">样例卡</text>
+      <text x="878" y="160" text-anchor="middle" font-size="13.5" font-weight="700" fill="#fff">策略卡</text>
+      <text x="30" y="440" font-size="12" fill="#8a92a6">一切入卡 = 主人签名 + 回归通过；单次信号只成为观察，永不直接改写人格。</text>
+    </svg>
+    <div class="diagram-cap">图 1 · V2 总览：三类信号经学习闭环路由到四张卡；关系档案让历史"被看见"；影子底座提供真实模型度量</div>
+  </div>
+</section>
+
+<!-- ══ 3 ══ -->
+<section id="s3">
+  <h2><span class="no">3</span>主线一：学习闭环</h2>
+  <p class="lead">把散落的信号变成有门槛、有路由、有签名的修订流水线。</p>
+
+  <h3>3.1 信号分类与路由</h3>
+  <table>
+    <tr><th style="width:22%">信号</th><th style="width:26%">来源（全部已有）</th><th style="width:26%">默认路由目标</th><th>门槛</th></tr>
+    <tr><td><strong>纠正</strong></td><td class="dim">会话内主人反馈；IM 文本纠正</td><td class="dim">样例卡候选（对照例）为主</td><td class="dim">单次归档；累计或显式归因入卡</td></tr>
+    <tr><td><strong>否决</strong></td><td class="dim">账本 <code>outcome.masterFeedback=推翻</code></td><td class="dim">策略卡修订建议 + 授权边界复核</td><td class="dim">同类否决计数；伴生记忆更正</td></tr>
+    <tr><td><strong>事实更正</strong></td><td class="dim">主人更正记忆内容</td><td class="dim">事实轨替代链（v1 已有）+ 支持度调整</td><td class="dim">主人显式确认即生效</td></tr>
+    <tr><td><strong>影子差异</strong></td><td class="dim">影子测试与主人实际回复的分歧</td><td class="dim">样例卡候选（低权重观察）</td><td class="dim">仅产出报告，不自动入卡</td></tr>
+  </table>
+
+  <h3>3.2 证据权重门槛（机制化"合度"）</h3>
+  <pre><code>LearningEvent {
+  id, ts, kind: <span class="ky">纠正|否决|事实更正|影子差异</span>,
+  sig: { <span class="ky">指纹</span>: 归一化后的信号要点, target: <span class="ky">样例卡|策略卡|记忆</span>, ref? },
+  weight: <span class="ky">1|N</span>,  by: <span class="st">"主人"</span>,  status: <span class="ky">观察|候选修订|已入卡|已驳回</span>
+}
+晋升规则：<span class="ky">同类指纹累计 ≥ N</span>（默认 N=3）<span class="ky">或</span> 主人显式归因（一次即候选）
+         → 生成候选修订 → 主人确认 → 回归 → 入卡</code></pre>
+  <p>指纹 = 纠正要点的归一化文本（NFC、去标点、截断），同类判定即指纹相等；N 可按信号类别配置（默认 3）。所有事件只增不删，驳回也是记录。</p>
+
+  <h3>3.3 变更流水线</h3>
+  <ol class="num-steps">
+    <li><b>信号捕获</b><span class="d">纠正经主人反馈通道（IM 按钮/命令/设置页）；否决复用账本 feedback；均落 LearningEvent。</span></li>
+    <li><b>候选生成</b><span class="d">按路由表产出候选：样例卡对照例（situation/say/avoidSay）或策略卡规则修订建议——只生成，不生效。</span></li>
+    <li><b>主人确认</b><span class="d">设置页「学习队列」逐条确认/驳回；确认即签名。</span></li>
+    <li><b>回归门禁</b><span class="d">入卡前自动跑 v1 场景集；报告随修订快照存档——检查通过不等于授权，但不通过一定不生效。</span></li>
+  </ol>
+</section>
+
+<!-- ══ 4 ══ -->
+<section id="s4">
+  <h2><span class="no">4</span>主线二：样例引擎</h2>
+  <p class="lead">行为保真的主引擎：对照式样例的挖掘、脱敏与确认。</p>
+
+  <h3>4.1 两个来源</h3>
+  <div class="cards-2">
+    <div class="card">
+      <div class="k">纠正转化（自动候选）</div>
+      <p>学习闭环产出的纠正，天然携带 <code>situation</code>（触发场景）与 <code>avoidSay</code>（被否决的说法）；<code>say</code> 由主人的修正话术或分身的下一版回答填充。来源标记「纠正」，携带事件引用。</p>
+    </div>
+    <div class="card">
+      <div class="k">语料挖掘（授权批量）</div>
+      <p>从主人真实历史对话按<strong>显式授权范围</strong>挖掘高价值场景（拒绝话术、边界表态、承诺措辞）。产出入候选池，<strong>默认按「候选」对待</strong>——来源登记不等于入卡。</p>
+    </div>
+  </div>
+
+  <h3>4.2 挖掘管线（语料来源适用）</h3>
+  <ol class="num-steps">
+    <li><b>授权接入</b><span class="d">沿用 inbox 语义：主人指定可挖掘的会话/时间范围，范围外一律拒绝读取；范围授权一次性、可撤销。</span></li>
+    <li><b>候选抽取</b><span class="d">识别四类高价值模式：拒绝/边界表态、承诺措辞、语气显著个人化的回复、纠正式改口。每条候选带出处引用。</span></li>
+    <li><b>脱敏</b><span class="d">候选写入候选池前过脱敏规则（与 dsh-redact 同源的密钥/证件/账号类目）：样例会进入提示词，<strong>真实敏感值不得进入样例</strong>，一律替换为占位描述。</span></li>
+    <li><b>确认入卡</b><span class="d">候选池 → 主人逐条确认 → 样例卡（confirmedAt 签名）→ 自动触发回归 → 生效。</span></li>
+  </ol>
+  <div class="callout">
+    <div class="c-title">为什么候选池与卡分离</div>
+    样例卡会直接塑造分身行为并进入提示词前缀——它是"人格"而非"素材"。挖掘的量级（可能数百条）与质量（未经验证）都不允许直通入卡；候选池是噪声的隔离区，确认是质量的闸门。
+  </div>
+</section>
+
+<!-- ══ 5 ══ -->
+<section id="s5">
+  <h2><span class="no">5</span>主线三：关系档案</h2>
+  <p class="lead">"同一个客户第三次来访，它记得前两次"——靠的不是会话记忆，而是关系轨的自动回注。</p>
+
+  <h3>5.1 装配自动回注（关键机制）</h3>
+  <p>v1 已有关系轨数据，但<strong>数据不被装配就不是记忆</strong>。v2 在 <code>assemble</code> 中新增<strong>关系摘要段</strong>：当对话者已注册（actorId 命中）时，自动附上该对话者的档案摘要——</p>
+  <pre><code>【关系档案 · 客户A】
+- 待跟进：报价方案已转主人（2 天前，未闭环）
+- 已承诺：下周内给答复（3 天前）
+- 观察：曾询问 A 产品报价与交付周期（1 周前）</code></pre>
+  <ul>
+    <li><strong>顺序</strong>：未闭环开环（按时间倒序，最多 5 条）→ 近期观察/推断（最多 5 条，标注「推断」）；</li>
+    <li><strong>预算</strong>：关系摘要段有字节上限（默认 1200 字节），超限按开环优先裁剪；</li>
+    <li><strong>可见性</strong>：复用 v1 规则——该摘要只对主人与当事人本人装配，他人结构性缺失。</li>
+  </ul>
+
+  <h3>5.2 推断转正流</h3>
+  <p>「观察」（实际发生的对话）可由主人升格为「推断」（对意图/偏好的判断），推断经确认可成为策略输入；每次升格都是带签名的转正记录。降权（推断证伪）同样走确认，并回写支持度轨道。</p>
+
+  <h3>5.3 关系档案页</h3>
+  <p>设置页新增「关系档案」视图（按对话者）：角色与绑定渠道、观察/推断时间线、开环清单（可标记闭环）、支持度标注、该对话者相关的账本记录跳转。数据全部来自 v1 已有的 relation 轨 + 注册表 + 账本，本阶段只建聚合视图。</p>
+</section>
+
+<!-- ══ 6 ══ -->
+<section id="s6">
+  <h2><span class="no">6</span>底座：影子测试与 HostRunner</h2>
+  <p class="lead">"像不像"必须有度量。影子测试是 v2 的度量基础设施，其前置是 v1 的遗留项 HostRunner。</p>
+
+  <h3>6.1 HostRunner 会话 API（升格为 v2 首个任务）</h3>
+  <p>补齐 v1 遗留：dsh-regression 的 <code>HostRunner</code> 通过 dsh 会话接口驱动<strong>临时会话</strong>跑场景（数字分身预设 + 指定 actor 视角），结束后会话即弃。约束：临时会话标记为 <code>dryRun=true</code>（不进生产统计、不触发真实外发——账本对 dryRun 会话的 L2 动作一律走"模拟批准"路径并显式标注）；并发上限 1；单场景超时 120 秒。</p>
+
+  <h3>6.2 影子测试协议</h3>
+  <ol class="num-steps">
+    <li><b>样本对生成</b><span class="d">从授权语料中选取「主人真实回复」的历史场景，隐去主人原文，让分身对同一访客输入生成回复，形成盲测对。</span></li>
+    <li><b>主人盲测</b><span class="d">设置页逐对呈现（随机左右），主人选择哪句是自己写的；可跳过。</span></li>
+    <li><b>度量与产出</b><span class="d">分辨不出率 = 主人选错/弃权的比例（滚动窗口）；分歧对自动生成样例卡候选（低权重观察，走确认）。</span></li>
+  </ol>
+  <p>隐私边界：盲测对仅在本地生成与展示；度量只落<strong>指标</strong>（比例、样本数、时间），不落对话原文；原文留在授权语料范围内，随授权撤销可清理。</p>
+</section>
+
+<!-- ══ 7 ══ -->
+<section id="s7">
+  <h2><span class="no">7</span>数据模型增量</h2>
+  <pre><code><span class="cm">// dsh-twin：学习事件与样例候选池</span>
+LearningEvent { id, ts, kind: <span class="ky">纠正|否决|事实更正|影子差异</span>, sig, target,
+                weight, by, status: <span class="ky">观察|候选修订|已入卡|已驳回</span>, ref? }
+ExemplarDraft { id, situation, say, avoidSay, sourceRef, sanitized: bool,
+                state: <span class="ky">候选|已确认|已驳回</span>, confirmedAt? }
+
+<span class="cm">// dsh-regression：影子测试</span>
+ShadowPair { id, scenarioRef, masterReply, twinReply, judged?: <span class="ky">主人|分身|弃权</span>, at }
+ShadowStats { window, samples, confusionRate }   <span class="cm">// 只存指标，不存原文</span>
+
+<span class="cm">// dsh-memory：装配段扩展</span>
+assemble(...) += relationDigest?: { actorId, openLoops[], observations[], bytes }</code></pre>
+  <p>存储沿用各包既有目录（<code>$DSH_HOME/&lt;包名&gt;/</code>），全部 0600 原子写；学习事件与影子指标只增不删。</p>
+</section>
+
+<!-- ══ 8 ══ -->
+<section id="s8">
+  <h2><span class="no">8</span>组件落点与接缝</h2>
+  <table>
+    <tr><th style="width:24%">能力</th><th style="width:26%">落点（建议）</th><th>理由</th></tr>
+    <tr><td><strong>学习闭环服务</strong></td><td class="dim"><code>dsh-twin</code> 内新增 learning 模块</td><td class="dim">写卡路径最短（cards.json 同仓）；信号入队 API 暴露给 im-channel 与账本</td></tr>
+    <tr><td><strong>样例候选池</strong></td><td class="dim"><code>dsh-twin</code> 内（<code>exemplar-drafts.json</code>）</td><td class="dim">候选与卡同仓，确认即迁移，无跨包事务</td></tr>
+    <tr><td><strong>语料挖掘器</strong></td><td class="dim"><code>dsh-twin</code> 内（读取器接口注入）</td><td class="dim">读取器按授权范围从会话存储取主人侧消息；范围校验复用受限路径策略</td></tr>
+    <tr><td><strong>关系摘要段</strong></td><td class="dim"><code>dsh-memory</code> assemble 扩展</td><td class="dim">v1 已有 relation 轨与装配管道，增量最小</td></tr>
+    <tr><td><strong>关系档案页</strong></td><td class="dim">设置页新 Tab（数据聚合自 actors/memory/ledger）</td><td class="dim">只读聚合视图 + 开环闭环动作</td></tr>
+    <tr><td><strong>影子测试</strong></td><td class="dim"><code>dsh-regression</code> 扩展（ShadowPair/评分/HostRunner）</td><td class="dim">runner 与报告体系复用，HostRunner 是其既有接口</td></tr>
+    <tr><td><strong>纠正采集入口</strong></td><td class="dim">im-channel 反馈按钮/命令 + 设置页</td><td class="dim">复用 v1 遗留的反馈通道设计；IM 按钮同时服务 T6 联调</td></tr>
+  </table>
+  <p>不新建插件包：v2 全部增量落在既有四包之内，组合树零变更。</p>
+</section>
+
+<!-- ══ 9 ══ -->
+<section id="s9">
+  <h2><span class="no">9</span>验收指标（v2 口径）</h2>
+  <table>
+    <tr><th style="width:30%">指标</th><th style="width:34%">目标</th><th>度量来源</th></tr>
+    <tr><td><strong>纠正闭环可回溯率</strong></td><td class="dim">100%（纠正→候选→确认→入卡全程有记录）</td><td class="dim">LearningEvent 流水</td></tr>
+    <tr><td><strong>关系记忆命中率</strong></td><td class="dim">同一 actor 第 N 次会话，装配含历史观察/开环的比例 ≥ 90%</td><td class="dim">回执统计（assemble receipt）</td></tr>
+    <tr><td><strong>影子分辨不出率</strong></td><td class="dim">滚动窗口持续上升（首版基线后定义阈值）</td><td class="dim">ShadowStats</td></tr>
+    <tr><td><strong>样例卡有效率</strong></td><td class="dim">入卡样例在回归/影子中的命中可统计</td><td class="dim">样例引用计数</td></tr>
+    <tr><td><strong>安全性不回退</strong></td><td class="dim">v1 四指标不变：越界拦截 100%、回归通过率不降</td><td class="dim">v1 体系</td></tr>
+  </table>
+</section>
+
+<!-- ══ 10 ══ -->
+<section id="s10">
+  <h2><span class="no">10</span>边界与不做的事</h2>
+  <ul class="principles" style="counter-reset: none;">
+    <li><b>不做隐式学习</b>一切人格变更必须主人签名；影子差异只产候选观察。</li>
+    <li><b>不自动挖语料</b>挖掘必须有显式授权范围；授权一次性、可撤销、范围外拒绝。</li>
+    <li><b>样例不携带真实敏感值</b>脱敏在入池前完成；占位描述替代真实值。</li>
+    <li><b>影子测试不触碰真实外发</b>dryRun 会话的 L2 动作一律模拟批准并显式标注。</li>
+    <li><b>不做关系记忆的向量检索</b>回注按时间与开环优先级确定性选取；检索升级仍属 v3 评估项。</li>
+    <li><b>状态卡汇入与主动性</b>仍属 v3，本阶段不引入任何主动触达。</li>
+  </ul>
+</section>
+
+<!-- ══ 11 ══ -->
+<section id="s11">
+  <h2><span class="no">11</span>实施分期</h2>
+  <table>
+    <tr><th style="width:16%">里程碑</th><th style="width:42%">内容</th><th>验收</th></tr>
+    <tr><td><strong>V2-M1</strong></td><td class="dim">HostRunner 会话 API（前置）+ 学习闭环服务与信号入队（im-channel 反馈按钮接线一并完成）</td><td class="dim">纠正→候选→确认→入卡全链路走通且可回溯</td></tr>
+    <tr><td><strong>V2-M2</strong></td><td class="dim">样例引擎（纠正转化 + 授权语料挖掘 + 脱敏 + 候选池）</td><td class="dim">首批样例入卡并过回归；脱敏抽检</td></tr>
+    <tr><td><strong>V2-M3</strong></td><td class="dim">关系摘要回注 + 关系档案页 + 影子测试协议上线</td><td class="dim">三次来访场景实测命中；ShadowStats 出数</td></tr>
+  </table>
+  <p>依赖提示：V2-M1 的 HostRunner 与 im-channel 反馈按钮是 v1 的两个遗留联调项，在 v2 内升格为正式任务；其余增量均落在既有四包内。</p>
+</section>
+
+<footer class="doc-foot">
+  <span>数字分身 · V2 阶段设计（越用越像） · v0.1 设计稿</span>
+  <span>上游：设计文档 v0.2 · 实施方案（v1 已交付）</span>
+</footer>
+
+</main>
+</div>
+</body>
+</html>

@@ -1,0 +1,766 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>数字分身 · 设计讲解</title>
+<style>
+  :root {
+    /* 1u = 幻灯片宽度的 1%（16:9 自适应：窗口过窄时按高度收缩） */
+    --u: min(1vw, 1.77778vh);
+    --ink: #1b2333;
+    --ink2: #2c3a66;
+    --muted: #5b6478;
+    --faint: #8a92a6;
+    --accent: #3f51c1;
+    --accent-soft: #eef0fb;
+    --accent-line: #c9cff2;
+    --line: #e4e7ef;
+    --bg: #eef0f5;
+    --card: #ffffff;
+    --good: #1d7a53;
+    --good-soft: #e9f5ef;
+    --warn: #b06a1f;
+    --warn-soft: #fbf3e7;
+    --bad: #b03a44;
+    --bad-soft: #faeced;
+  }
+  * { box-sizing: border-box; margin: 0; }
+  html, body { height: 100%; }
+  body {
+    font-family: "Segoe UI", "PingFang SC", "Microsoft YaHei", "Source Han Sans SC", sans-serif;
+    background: var(--bg);
+    color: var(--ink);
+    overflow: hidden;
+  }
+  /* ── 幻灯片框架 ── */
+  .deck { height: 100vh; overflow-y: scroll; scroll-snap-type: y mandatory; scrollbar-width: none; }
+  .deck::-webkit-scrollbar { display: none; }
+  .slide {
+    height: 100vh;
+    scroll-snap-align: center;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .frame {
+    position: relative;
+    width: calc(var(--u) * 100);
+    height: calc(var(--u) * 56.25);
+    background: var(--card);
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    padding: calc(var(--u) * 4.2) calc(var(--u) * 6) calc(var(--u) * 3.2);
+    box-shadow: 0 calc(var(--u)*0.4) calc(var(--u)*2.4) rgba(27,35,51,.10);
+  }
+  /* ── 页内版式 ── */
+  .kicker {
+    font-size: calc(var(--u) * 1.35);
+    letter-spacing: .22em;
+    color: var(--accent);
+    font-weight: 700;
+    margin-bottom: calc(var(--u) * 0.7);
+  }
+  h2 { font-size: calc(var(--u) * 3.3); line-height: 1.25; letter-spacing: .01em; }
+  .lead { font-size: calc(var(--u) * 1.75); color: var(--muted); margin-top: calc(var(--u) * 0.7); }
+  .body-area { flex: 1; display: flex; flex-direction: column; justify-content: center; min-height: 0; }
+  .foot {
+    display: flex;
+    justify-content: space-between;
+    font-size: calc(var(--u) * 1.15);
+    color: var(--faint);
+    border-top: 1px solid var(--line);
+    padding-top: calc(var(--u) * 1);
+  }
+  .banner {
+    background: var(--accent);
+    color: #fff;
+    border-radius: calc(var(--u) * 1);
+    padding: calc(var(--u) * 1.7) calc(var(--u) * 2.6);
+    font-size: calc(var(--u) * 1.9);
+    font-weight: 600;
+    line-height: 1.6;
+    text-align: center;
+  }
+  .banner b { color: #ffd98a; }
+  /* ── 封面 ── */
+  .cover { background: linear-gradient(135deg, #1b2333 0%, #2c3a66 78%, #3f51c1 130%); color: #fff; }
+  .cover .kicker { color: #9fb0ff; }
+  .cover h1 { font-size: calc(var(--u) * 7.6); letter-spacing: .06em; line-height: 1.15; }
+  .cover .sub { font-size: calc(var(--u) * 2.5); color: #c6cff5; margin-top: calc(var(--u) * 1.6); font-weight: 500; }
+  .cover .meta { display: flex; gap: calc(var(--u) * 1.2); margin-top: calc(var(--u) * 4.5); flex-wrap: wrap; }
+  .cover .chip {
+    font-size: calc(var(--u) * 1.3);
+    border: 1px solid rgba(255,255,255,.35);
+    border-radius: 999px;
+    padding: calc(var(--u) * 0.5) calc(var(--u) * 1.6);
+    color: #dfe5ff;
+  }
+  .cover .hint { position: absolute; bottom: calc(var(--u)*3.2); right: calc(var(--u)*6); font-size: calc(var(--u)*1.2); color: rgba(255,255,255,.55); }
+  .cover .rule { width: calc(var(--u)*9); height: calc(var(--u)*0.55); background: #ffd98a; margin: calc(var(--u)*2.2) 0 0; }
+  /* ── 通用卡片 ── */
+  .row3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: calc(var(--u) * 2); }
+  .row2 { display: grid; grid-template-columns: 1fr 1fr; gap: calc(var(--u) * 2); }
+  .pcard {
+    background: var(--card);
+    border: 1px solid var(--line);
+    border-top: calc(var(--u) * 0.5) solid var(--accent);
+    border-radius: calc(var(--u) * 1);
+    padding: calc(var(--u) * 1.8) calc(var(--u) * 2);
+  }
+  .pcard .ic { width: calc(var(--u) * 4); height: calc(var(--u) * 4); color: var(--accent); margin-bottom: calc(var(--u) * 1); }
+  .pcard h3 { font-size: calc(var(--u) * 1.95); margin-bottom: calc(var(--u) * 0.8); }
+  .pcard p { font-size: calc(var(--u) * 1.45); color: var(--muted); line-height: 1.7; }
+  /* ── 四张卡 ── */
+  .row4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: calc(var(--u) * 1.8); }
+  .pcard .freq {
+    display: inline-block;
+    font-size: calc(var(--u) * 1.1);
+    color: var(--faint);
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    padding: calc(var(--u)*0.2) calc(var(--u)*1.1);
+    margin-bottom: calc(var(--u)*0.8);
+  }
+  /* ── 权限阶梯 ── */
+  .ladder { display: flex; align-items: flex-end; gap: calc(var(--u) * 1.6); height: calc(var(--u) * 30); }
+  .rung {
+    flex: 1;
+    border-radius: calc(var(--u) * 1) calc(var(--u) * 1) 0 0;
+    padding: calc(var(--u) * 1.6);
+    color: #fff;
+    display: flex;
+    flex-direction: column;
+  }
+  .rung .lv { font-size: calc(var(--u) * 2.4); font-weight: 800; opacity: .95; }
+  .rung .nm { font-size: calc(var(--u) * 1.9); font-weight: 700; margin: calc(var(--u)*0.2) 0 calc(var(--u)*0.9); }
+  .rung ul { list-style: none; padding: 0; }
+  .rung li { font-size: calc(var(--u) * 1.3); opacity: .92; line-height: 1.65; }
+  .rung li::before { content: "· "; }
+  .rung .gate { margin-top: auto; font-size: calc(var(--u) * 1.2); background: rgba(255,255,255,.18); border-radius: calc(var(--u)*0.5); padding: calc(var(--u)*0.4) calc(var(--u)*0.8); align-self: flex-start; }
+  /* ── 表格 ── */
+  table.vt { width: 100%; border-collapse: separate; border-spacing: 0; font-size: calc(var(--u) * 1.55); }
+  table.vt th { text-align: left; background: var(--accent-soft); color: var(--ink); padding: calc(var(--u)*1.1) calc(var(--u)*1.6); font-size: calc(var(--u)*1.45); letter-spacing: .04em; }
+  table.vt th:first-child { border-radius: calc(var(--u)*0.8) 0 0 0; }
+  table.vt th:last-child { border-radius: 0 calc(var(--u)*0.8) 0 0; }
+  table.vt td { padding: calc(var(--u)*1.15) calc(var(--u)*1.6); border-bottom: 1px solid var(--line); vertical-align: top; line-height: 1.6; }
+  table.vt tr td:first-child { font-weight: 700; white-space: nowrap; }
+  /* ── KPI ── */
+  .kpi { text-align: center; }
+  .kpi .t { display: inline-block; font-size: calc(var(--u) * 1.15); font-weight: 700; border-radius: 999px; padding: calc(var(--u)*0.25) calc(var(--u)*1.4); margin-bottom: calc(var(--u)*0.8); letter-spacing: .08em; }
+  .kpi .t.s { color: var(--bad); background: var(--bad-soft); }
+  .kpi .t.f { color: var(--accent); background: var(--accent-soft); }
+  .kpi svg { width: calc(var(--u) * 12.5); height: calc(var(--u) * 12.5); }
+  .kpi .num { font-size: calc(var(--u) * 2.9); font-weight: 800; margin-top: calc(var(--u) * 0.4); }
+  .kpi .nm { font-size: calc(var(--u) * 1.6); font-weight: 700; margin-top: calc(var(--u) * 0.3); }
+  .kpi .ds { font-size: calc(var(--u) * 1.2); color: var(--muted); margin-top: calc(var(--u) * 0.3); line-height: 1.55; }
+  /* ── 路线图 ── */
+  .road { display: flex; gap: calc(var(--u) * 2); position: relative; }
+  .road::before { content: ""; position: absolute; left: 2%; right: 2%; top: calc(var(--u) * 2.1); height: calc(var(--u) * 0.45); background: var(--accent-line); }
+  .phase { flex: 1; position: relative; }
+  .phase .dot {
+    width: calc(var(--u) * 4.2); height: calc(var(--u) * 4.2);
+    border-radius: 50%; background: var(--accent); color: #fff;
+    font-size: calc(var(--u) * 1.5); font-weight: 800;
+    display: flex; align-items: center; justify-content: center;
+    margin-bottom: calc(var(--u) * 1.4);
+    border: calc(var(--u)*0.45) solid #fff;
+    box-shadow: 0 0 0 calc(var(--u)*0.25) var(--accent-line);
+  }
+  .phase .box { background: var(--card); border: 1px solid var(--line); border-radius: calc(var(--u) * 1); padding: calc(var(--u) * 1.7); min-height: calc(var(--u) * 16.5); }
+  .phase .box h3 { font-size: calc(var(--u) * 1.85); margin-bottom: calc(var(--u) * 0.7); }
+  .phase .box p { font-size: calc(var(--u) * 1.35); color: var(--muted); line-height: 1.65; }
+  .phase .box .ms { margin-top: calc(var(--u) * 1); font-size: calc(var(--u) * 1.25); color: var(--good); background: var(--good-soft); border-radius: calc(var(--u)*0.6); padding: calc(var(--u)*0.5) calc(var(--u)*0.9); display: inline-block; }
+  /* ── 结语 ── */
+  .quotebox {
+    border-left: calc(var(--u) * 0.6) solid var(--accent);
+    background: linear-gradient(90deg, var(--accent-soft), rgba(238,240,251,0) 80%);
+    border-radius: 0 calc(var(--u)*1.4) calc(var(--u)*1.4) 0;
+    padding: calc(var(--u) * 3.2) calc(var(--u) * 3.6);
+    font-size: calc(var(--u) * 2.55);
+    line-height: 2;
+    font-weight: 600;
+  }
+  .quotebox b { color: var(--accent); }
+  /* ── HUD ── */
+  .hud { position: fixed; right: calc(var(--u) * 2.2); bottom: calc(var(--u) * 2.2); display: flex; align-items: center; gap: calc(var(--u) * 1); z-index: 9; }
+  .hud button {
+    width: calc(var(--u) * 4); height: calc(var(--u) * 4);
+    border-radius: 50%; border: 1px solid var(--accent-line);
+    background: #fff; color: var(--accent);
+    font-size: calc(var(--u) * 1.8); cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .hud button:hover { background: var(--accent-soft); }
+  .hud .pg { font-size: calc(var(--u) * 1.4); color: var(--muted); min-width: calc(var(--u) * 4.5); text-align: center; }
+  .dots { position: fixed; right: calc(var(--u) * 1.4); top: 50%; transform: translateY(-50%); display: flex; flex-direction: column; gap: calc(var(--u) * 0.9); z-index: 9; }
+  .dots a { width: calc(var(--u) * 0.9); height: calc(var(--u) * 0.9); border-radius: 50%; background: #c6cbd8; display: block; }
+  .dots a.on { background: var(--accent); transform: scale(1.35); }
+  svg text { font-family: inherit; }
+  @media print {
+    :root { --u: 1vw; }
+    body { overflow: visible; }
+    .deck { height: auto; overflow: visible; }
+    .slide { height: auto; page-break-after: always; }
+    .hud, .dots { display: none; }
+  }
+</style>
+</head>
+<body>
+<div class="deck" id="deck">
+
+<!-- ═══════ P1 封面 ═══════ -->
+<section class="slide" id="p1">
+  <div class="frame cover" style="justify-content:center">
+    <div class="kicker">设 计 讲 解 · 内 部 资 料</div>
+    <h1>数字分身</h1>
+    <div class="rule"></div>
+    <div class="sub">把这套设计一次讲清楚：它是什么、怎么管住、怎么长大</div>
+    <div class="meta">
+      <span class="chip">2026 年 9 月</span>
+      <span class="chip">设计版本 v0.2</span>
+      <span class="chip">配套文档：数字分身系统设计</span>
+    </div>
+    <div class="hint">← → 方向键 / 滚轮翻页</div>
+  </div>
+</section>
+
+<!-- ═══════ P2 背景 ═══════ -->
+<section class="slide" id="p2">
+  <div class="frame">
+    <div class="kicker">背 景</div>
+    <h2>这套设计要解决什么问题</h2>
+    <div class="body-area">
+      <div class="row3">
+        <div class="pcard">
+          <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3.5 2"/></svg>
+          <h3>沟通重复</h3>
+          <p>常见问题、进度同步、资料索取，占掉大量工作时间</p>
+        </div>
+        <div class="pcard">
+          <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M20 13.5A8.5 8.5 0 0 1 10.5 4 8.5 8.5 0 1 0 20 13.5z"/></svg>
+          <h3>响应空窗</h3>
+          <p>主人不在场时，客户与同事的请求只能排队等待</p>
+        </div>
+        <div class="pcard">
+          <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><ellipse cx="12" cy="6" rx="7" ry="3"/><path d="M5 6v6c0 1.7 3.1 3 7 3s7-1.3 7-3V6"/><path d="M5 12v6c0 1.7 3.1 3 7 3s7-1.3 7-3v-6"/></svg>
+          <h3>经验流失</h3>
+          <p>沟通沉淀在个人聊天记录里，组织留不下可用资产</p>
+        </div>
+      </div>
+      <div style="margin: calc(var(--u)*1.2) auto calc(var(--u)*1); width: fit-content;">
+        <svg style="width: calc(var(--u)*3.4); height: calc(var(--u)*3.4); display:block" viewBox="0 0 24 24" fill="none" stroke="#3f51c1" stroke-width="2.2" stroke-linecap="round"><path d="M12 4v14"/><path d="M6 12l6 6 6-6"/></svg>
+      </div>
+      <div class="banner" style="padding: calc(var(--u)*1.3) calc(var(--u)*2.4); font-size: calc(var(--u)*1.75)">设计目标：一名 <b>7×24 在场 · 行为可控 · 越用越懂业务</b> 的数字分身，接管主人的一部分对外沟通与事务</div>
+      <div style="margin-top: calc(var(--u)*1.2)">
+        <div style="font-size: calc(var(--u)*1.25); color: var(--faint); margin-bottom: calc(var(--u)*0.5)">一位管理者的时间都去哪了（示意，非实测）</div>
+        <div style="display:flex; height: calc(var(--u)*2.2); border-radius: calc(var(--u)*0.6); overflow:hidden; font-size: calc(var(--u)*1.2); color:#fff; font-weight:600">
+          <div style="width:45%; background:#3f51c1; display:flex; align-items:center; justify-content:center">重复应答 ≈45%</div>
+          <div style="width:25%; background:#7b8ade; display:flex; align-items:center; justify-content:center">半结构化协调 ≈25%</div>
+          <div style="width:30%; background:#c6cbd8; color:#1b2333; display:flex; align-items:center; justify-content:center">本人判断与创造</div>
+        </div>
+        <div style="font-size: calc(var(--u)*1.15); color: var(--faint); margin-top: calc(var(--u)*0.5)">前两类是分身的可接管候选区；试点期用真实数据校准</div>
+      </div>
+    </div>
+    <div class="foot"><span>数字分身 · 设计讲解</span><span>02 / 13</span></div>
+  </div>
+</section>
+
+<!-- ═══════ P3 定位 ═══════ -->
+<section class="slide" id="p3">
+  <div class="frame">
+    <div class="kicker">定 位</div>
+    <h2>一句话说清它是什么</h2>
+    <div class="body-area">
+      <div style="text-align:center; font-size: calc(var(--u)*2.7); font-weight:800; line-height:1.5; margin-bottom: calc(var(--u)*2.4)">
+        一名<span style="color:var(--accent)">代表主人</span>对外沟通与办事的<br>"持牌数字代理"
+      </div>
+      <div class="row2" style="align-items:stretch; position:relative; gap: calc(var(--u)*7)">
+        <div style="background:var(--bg); border:1px solid var(--line); border-radius: calc(var(--u)*1); padding: calc(var(--u)*2.2)">
+          <div style="font-size: calc(var(--u)*1.35); letter-spacing:.15em; color:var(--faint); font-weight:700; margin-bottom: calc(var(--u)*1)">常见做法：人格仿真</div>
+          <ul style="list-style:none; padding:0; font-size: calc(var(--u)*1.55); line-height:2.15; color:var(--muted)">
+            <li>✕&nbsp; 追求"说话像"，台词不可预期</li>
+            <li>✕&nbsp; 没有权限概念，什么话都敢说</li>
+            <li>✕&nbsp; 说错话没有记录、无法追责</li>
+            <li>✕&nbsp; 出了事，主人兜底却不知情</li>
+          </ul>
+        </div>
+        <div style="background:var(--accent-soft); border:1px solid var(--accent-line); border-radius: calc(var(--u)*1); padding: calc(var(--u)*2.2)">
+          <div style="font-size: calc(var(--u)*1.35); letter-spacing:.15em; color:var(--accent); font-weight:700; margin-bottom: calc(var(--u)*1)">本设计：委托代理</div>
+          <ul style="list-style:none; padding:0; font-size: calc(var(--u)*1.55); line-height:2.15; color:var(--ink)">
+            <li>✓&nbsp; 授权边界事先写死在系统里</li>
+            <li>✓&nbsp; 对方身份可认证，冒充无效</li>
+            <li>✓&nbsp; 每句对外的话全程留痕可审计</li>
+            <li>✓&nbsp; 行为可预期，主人才敢放权</li>
+          </ul>
+        </div>
+        <div style="position:absolute; left:50%; top:50%; transform:translate(-50%,-50%); background:var(--ink); color:#fff; font-weight:800; font-size: calc(var(--u)*1.35); border-radius:999px; padding: calc(var(--u)*0.8) calc(var(--u)*1.8)">不是做得更像<br>而是做得可信</div>
+      </div>
+      <div style="text-align:center; font-size: calc(var(--u)*1.35); color: var(--faint); margin-top: calc(var(--u)*2)">关键不对称：分身的行为由模型即时生成，但<strong style="color:var(--ink)">行为后果由主人承担</strong>——所以整套设计围绕"可托付"展开</div>
+    </div>
+    <div class="foot"><span>数字分身 · 设计讲解</span><span>03 / 13</span></div>
+  </div>
+</section>
+
+<!-- ═══════ P4 理念 ═══════ -->
+<section class="slide" id="p4">
+  <div class="frame">
+    <div class="kicker">理 念</div>
+    <h2>核心理念：先"可托付"，再"越像"</h2>
+    <div class="lead">衡量分身的第一标准，不是"像不像主人"，而是"敢不敢让它代表主人"。</div>
+    <div class="body-area">
+      <div class="row3">
+        <div class="pcard" style="border-top-color:#1d7a53">
+          <svg class="ic" style="color:#1d7a53" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l7 3v5c0 4.4-3 8.4-7 10-4-1.6-7-5.6-7-10V6z"/><path d="M9 12l2 2 4-4"/></svg>
+          <h3>授权有边界</h3>
+          <p>什么能替你定、什么必须等你批、什么坚决不做——事先写进系统，不靠临场发挥</p>
+        </div>
+        <div class="pcard" style="border-top-color:#3f51c1">
+          <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="9" cy="11" r="2.2"/><path d="M6 16.5c.8-1.6 2-2.3 3-2.3s2.2.7 3 2.3"/><path d="M15 9.5h4M15 13h3"/></svg>
+          <h3>身份可认证</h3>
+          <p>它明确知道对面是谁；冒充身份、伪造指令，在系统层面直接无效</p>
+        </div>
+        <div class="pcard" style="border-top-color:#b06a1f">
+          <svg class="ic" style="color:#b06a1f" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M8 5h11M8 10h11M8 15h11"/><path d="M4.5 5l1 1 1.8-2M4.5 10l1 1 1.8-2M4.5 15l1 1 1.8-2"/></svg>
+          <h3>行为可审计</h3>
+          <p>说过什么、看过什么、做过什么、谁批准的——全程留痕，随时可回查</p>
+        </div>
+      </div>
+      <div class="banner" style="margin-top: calc(var(--u)*2.6)">"像主人"不是目标，而是把<strong style="color:#ffd98a">授权、身份、审计</strong>做对之后的自然结果</div>
+    </div>
+    <div class="foot"><span>数字分身 · 设计讲解</span><span>04 / 13</span></div>
+  </div>
+</section>
+
+<!-- ═══════ P5 架构总览 ═══════ -->
+<section class="slide" id="p5">
+  <div class="frame">
+    <div class="kicker">架 构</div>
+    <h2>总体架构：一个内核，四个模型，两套闭环</h2>
+    <div class="body-area" style="align-items:center">
+      <svg viewBox="0 0 940 396" style="width:88%">
+        <defs>
+          <marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10z" fill="#3f51c1"/></marker>
+          <marker id="arg" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10z" fill="#8a92a6"/></marker>
+        </defs>
+        <!-- 评估闭环 dashed frame -->
+        <rect x="16" y="10" width="908" height="118" rx="14" fill="none" stroke="#c9cff2" stroke-width="1.5" stroke-dasharray="6 5"/>
+        <text x="28" y="32" font-size="14" fill="#3f51c1" font-weight="600">评估闭环</text>
+        <text x="96" y="32" font-size="13" fill="#8a92a6">每次改动自动跑行为测试，防止越界与漂移</text>
+        <!-- 四模型 -->
+        <g>
+          <rect x="30" y="40" width="206" height="76" rx="10" fill="#f7f8fb" stroke="#c9cff2" stroke-width="1.5"/>
+          <text x="133" y="70" text-anchor="middle" font-size="17" font-weight="700" fill="#1b2333">自我模型</text>
+          <text x="133" y="94" text-anchor="middle" font-size="13" fill="#5b6478">我是谁：边界 · 价值观 · 偏好</text>
+
+          <rect x="256" y="40" width="206" height="76" rx="10" fill="#f7f8fb" stroke="#c9cff2" stroke-width="1.5"/>
+          <text x="359" y="70" text-anchor="middle" font-size="17" font-weight="700" fill="#1b2333">关系模型</text>
+          <text x="359" y="94" text-anchor="middle" font-size="13" fill="#5b6478">对方是谁：角色 · 历史 · 承诺</text>
+
+          <rect x="482" y="40" width="206" height="76" rx="10" fill="#f7f8fb" stroke="#c9cff2" stroke-width="1.5"/>
+          <text x="585" y="70" text-anchor="middle" font-size="17" font-weight="700" fill="#1b2333">意图模型</text>
+          <text x="585" y="94" text-anchor="middle" font-size="13" fill="#5b6478">主人要什么：目标 · 日程 · 优先级</text>
+
+          <rect x="708" y="40" width="202" height="76" rx="10" fill="#f7f8fb" stroke="#c9cff2" stroke-width="1.5"/>
+          <text x="809" y="70" text-anchor="middle" font-size="17" font-weight="700" fill="#1b2333">自传模型</text>
+          <text x="809" y="94" text-anchor="middle" font-size="13" fill="#5b6478">我说过什么：对外言行日志</text>
+        </g>
+        <!-- models -> ledger -->
+        <line x1="470" y1="116" x2="470" y2="146" stroke="#3f51c1" stroke-width="2.2" marker-end="url(#ar)"/>
+        <text x="482" y="136" font-size="13" fill="#5b6478">外发动作（草案）</text>
+        <!-- 委托账本 -->
+        <rect x="240" y="148" width="460" height="60" rx="12" fill="#eef0fb" stroke="#3f51c1" stroke-width="2"/>
+        <text x="470" y="172" text-anchor="middle" font-size="17.5" font-weight="700" fill="#3f51c1">授权闸门（核心内核）</text>
+        <text x="470" y="194" text-anchor="middle" font-size="13" fill="#5b6478">每个动作先过闸：自主 / 通报 / 批准 / 禁区</text>
+        <!-- ledger -> channel -->
+        <line x1="470" y1="208" x2="470" y2="238" stroke="#3f51c1" stroke-width="2.2" marker-end="url(#ar)"/>
+        <text x="482" y="228" font-size="13" fill="#5b6478">放行 / 阻断并转人工</text>
+        <!-- 渠道渲染层 -->
+        <rect x="240" y="240" width="460" height="48" rx="12" fill="#ffffff" stroke="#c9cff2" stroke-width="1.5"/>
+        <text x="470" y="260" text-anchor="middle" font-size="16" font-weight="700" fill="#1b2333">渠道渲染层</text>
+        <text x="470" y="279" text-anchor="middle" font-size="13" fill="#5b6478">企微 / 飞书 / 网页 —— 同一人格的不同投影</text>
+        <!-- channel -> 对话者 -->
+        <line x1="470" y1="288" x2="470" y2="314" stroke="#3f51c1" stroke-width="2.2" marker-end="url(#ar)"/>
+        <rect x="340" y="316" width="260" height="42" rx="10" fill="#f7f8fb" stroke="#c9cff2" stroke-width="1.5"/>
+        <text x="470" y="335" text-anchor="middle" font-size="15.5" font-weight="600" fill="#1b2333">对话者</text>
+        <text x="470" y="351" text-anchor="middle" font-size="12.5" fill="#8a92a6">主人 · 同事 · 客户 · 访客</text>
+        <!-- 学习闭环 dashed arrow -->
+        <path d="M 702 264 C 886 264, 914 220, 914 150 C 914 100, 918 84, 906 82" fill="none" stroke="#8a92a6" stroke-width="1.6" stroke-dasharray="6 5" marker-end="url(#arg)"/>
+        <text x="902" y="185" font-size="13" fill="#5b6478" transform="rotate(-90 902 185)" text-anchor="middle">学习闭环：纠正 → 确认 → 入卡</text>
+        <!-- 事实源 note -->
+        <text x="30" y="388" font-size="13.5" fill="#8a92a6">主人的真实世界（对话 · 日程 · 任务 · 纠正）是四个模型的唯一事实源；任何改写都必须可溯源。</text>
+      </svg>
+    </div>
+    <div class="foot"><span>数字分身 · 设计讲解</span><span>05 / 13</span></div>
+  </div>
+</section>
+
+<!-- ═══════ P6 工作链路 ═══════ -->
+<section class="slide" id="p6">
+  <div class="frame">
+    <div class="kicker">链 路</div>
+    <h2>一次对话的完整链路</h2>
+    <div class="body-area" style="align-items:center">
+      <svg viewBox="0 0 1060 380" style="width:100%">
+        <defs>
+          <marker id="ar2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10z" fill="#3f51c1"/></marker>
+          <marker id="arg2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10z" fill="#8a92a6"/></marker>
+        </defs>
+        <!-- 主人 -->
+        <rect x="470" y="14" width="200" height="66" rx="12" fill="#1b2333"/>
+        <text x="570" y="43" text-anchor="middle" font-size="21" font-weight="700" fill="#fff">主人</text>
+        <text x="570" y="66" text-anchor="middle" font-size="14" fill="#aeb6cf">批准 · 纠正 · 审计</text>
+        <path d="M520 80 C 500 110, 480 120, 468 132" fill="none" stroke="#8a92a6" stroke-width="2" stroke-dasharray="6 5" marker-end="url(#arg2)"/>
+        <path d="M620 80 C 650 110, 690 122, 718 134" fill="none" stroke="#8a92a6" stroke-width="2" stroke-dasharray="6 5" marker-end="url(#arg2)"/>
+        <text x="452" y="104" font-size="14" fill="#8a92a6" text-anchor="end">纠正回灌</text>
+        <text x="688" y="106" font-size="14" fill="#8a92a6">批准落账</text>
+        <!-- 主链路 -->
+        <g>
+          <rect x="20" y="140" width="150" height="96" rx="12" fill="#f7f8fb" stroke="#c9cff2" stroke-width="1.6"/>
+          <text x="95" y="180" text-anchor="middle" font-size="19" font-weight="700" fill="#1b2333">对话者</text>
+          <text x="95" y="206" text-anchor="middle" font-size="13.5" fill="#8a92a6">客户 · 同事 · 访客</text>
+
+          <line x1="170" y1="188" x2="204" y2="188" stroke="#3f51c1" stroke-width="2.4" marker-end="url(#ar2)"/>
+
+          <rect x="208" y="140" width="150" height="96" rx="12" fill="#f7f8fb" stroke="#c9cff2" stroke-width="1.6"/>
+          <text x="283" y="180" text-anchor="middle" font-size="19" font-weight="700" fill="#1b2333">渠道入口</text>
+          <text x="283" y="206" text-anchor="middle" font-size="13.5" fill="#8a92a6">企微 · 飞书 · 网页</text>
+
+          <line x1="358" y1="188" x2="392" y2="188" stroke="#3f51c1" stroke-width="2.4" marker-end="url(#ar2)"/>
+
+          <rect x="396" y="140" width="150" height="96" rx="12" fill="#f7f8fb" stroke="#c9cff2" stroke-width="1.6"/>
+          <text x="471" y="175" text-anchor="middle" font-size="19" font-weight="700" fill="#1b2333">身份识别</text>
+          <text x="471" y="199" text-anchor="middle" font-size="13.5" fill="#8a92a6">认证锚定 · 冒充无效</text>
+          <text x="471" y="221" text-anchor="middle" font-size="13.5" fill="#8a92a6">分级可见</text>
+
+          <line x1="546" y1="188" x2="580" y2="188" stroke="#3f51c1" stroke-width="2.4" marker-end="url(#ar2)"/>
+
+          <rect x="584" y="140" width="170" height="96" rx="12" fill="#eef0fb" stroke="#3f51c1" stroke-width="2"/>
+          <text x="669" y="172" text-anchor="middle" font-size="19" font-weight="700" fill="#3f51c1">分身大脑</text>
+          <text x="669" y="196" text-anchor="middle" font-size="13.5" fill="#5b6478">自我 · 关系 · 意图 · 自传</text>
+          <text x="669" y="219" text-anchor="middle" font-size="13.5" fill="#5b6478">越用越懂主人和业务</text>
+
+          <line x1="754" y1="188" x2="788" y2="188" stroke="#3f51c1" stroke-width="2.4" marker-end="url(#ar2)"/>
+
+          <rect x="792" y="140" width="150" height="96" rx="12" fill="#fff" stroke="#b06a1f" stroke-width="2.2"/>
+          <text x="867" y="172" text-anchor="middle" font-size="19" font-weight="700" fill="#b06a1f">授权闸门</text>
+          <text x="867" y="196" text-anchor="middle" font-size="13.5" fill="#5b6478">自主 / 通报 / 批准 / 禁区</text>
+          <text x="867" y="219" text-anchor="middle" font-size="13.5" fill="#5b6478">无批准 = 发不出去</text>
+
+          <line x1="942" y1="188" x2="976" y2="188" stroke="#3f51c1" stroke-width="2.4" marker-end="url(#ar2)"/>
+          <rect x="980" y="140" width="70" height="96" rx="12" fill="#1d7a53"/>
+          <text x="1015" y="176" text-anchor="middle" font-size="17" font-weight="700" fill="#fff">对外</text>
+          <text x="1015" y="200" text-anchor="middle" font-size="17" font-weight="700" fill="#fff">动作</text>
+        </g>
+        <!-- 底部审计条 -->
+        <rect x="20" y="286" width="1030" height="52" rx="10" fill="#f2f3f8" stroke="#e4e7ef"/>
+        <text x="535" y="318" text-anchor="middle" font-size="15.5" fill="#5b6478">全程留痕：说了什么 · 看见了什么 · 做了什么 · 结果如何 —— 每一笔都可回查</text>
+      </svg>
+    </div>
+    <div class="foot"><span>数字分身 · 设计讲解</span><span>06 / 13</span></div>
+  </div>
+</section>
+
+<!-- ═══════ P7 人格四张卡 ═══════ -->
+<section class="slide" id="p7">
+  <div class="frame">
+    <div class="kicker">人 格</div>
+    <h2>分身的"人格"不是一段描述，是四张卡</h2>
+    <div class="body-area">
+      <div class="row4">
+        <div class="pcard">
+          <span class="freq">静态 · 季度级变更</span>
+          <h3>① 身份卡</h3>
+          <p>我是谁：名字、角色、背景。公开/私密分级——<strong>无权者根本看不到</strong>，不是"要求保密"</p>
+        </div>
+        <div class="pcard">
+          <span class="freq">结构化 · 月级变更</span>
+          <h3>② 策略卡</h3>
+          <p>做事规则：触发条件 → 动作 → 升级路径。一条条<strong>可测试</strong>，红线类无例外</p>
+        </div>
+        <div class="pcard">
+          <span class="freq">持续增补 · 最高杠杆</span>
+          <h3>③ 样例卡</h3>
+          <p>校准样例："这么说 / 不这么说"对照。行为保真的主引擎，比形容词有效得多</p>
+        </div>
+        <div class="pcard">
+          <span class="freq">动态 · 天级 · 自动衰减</span>
+          <h3>④ 状态卡</h3>
+          <p>主人最近在忙什么、分身答应过什么。由日程与任务自动汇入，随时间自动降权</p>
+        </div>
+      </div>
+      <div class="banner" style="margin-top: calc(var(--u)*2.4)">四张卡合成提示词是一个<strong style="color:#ffd98a">纯函数投影</strong>——每一个行为都能溯源到"哪张卡的哪一条"</div>
+    </div>
+    <div class="foot"><span>数字分身 · 设计讲解</span><span>07 / 13</span></div>
+  </div>
+</section>
+
+<!-- ═══════ P8 权限阶梯 ═══════ -->
+<section class="slide" id="p8">
+  <div class="frame">
+    <div class="kicker">权 限</div>
+    <h2>怎么管住它：四级委托，逐级收紧</h2>
+    <div class="body-area">
+      <div class="ladder">
+        <div class="rung" style="height:52%; background:#5a8a6e">
+          <div class="lv">L0</div><div class="nm">自主</div>
+          <ul><li>答疑 · 检索 · 日常应答</li></ul>
+          <div class="gate">做完留痕即可</div>
+        </div>
+        <div class="rung" style="height:68%; background:#3f51c1">
+          <div class="lv">L1</div><div class="nm">通报</div>
+          <ul><li>代回一条消息</li><li>调整日程</li></ul>
+          <div class="gate">做完必须报告</div>
+        </div>
+        <div class="rung" style="height:84%; background:#b06a1f">
+          <div class="lv">L2</div><div class="nm">批准</div>
+          <ul><li>对外承诺</li><li>报价 · 发布内容</li></ul>
+          <div class="gate">没有批准，系统发不出去</div>
+        </div>
+        <div class="rung" style="height:100%; background:#b03a44">
+          <div class="lv">L3</div><div class="nm">禁区</div>
+          <ul><li>转账 · 删除数据</li><li>代替主人做决策</li></ul>
+          <div class="gate">无论谁问，只转达请求</div>
+        </div>
+      </div>
+      <div class="banner" style="margin-top: calc(var(--u)*2.2)">红线不是写在提示词里的"嘱咐"，而是<strong style="color:#ffd98a">系统级的硬闸门</strong>——批准可留痕、可撤销、可过期，每次放行必回填结果</div>
+    </div>
+    <div class="foot"><span>数字分身 · 设计讲解</span><span>08 / 13</span></div>
+  </div>
+</section>
+
+<!-- ═══════ P9 信息边界 ═══════ -->
+<section class="slide" id="p9">
+  <div class="frame">
+    <div class="kicker">边 界</div>
+    <h2>它知道什么、能看什么</h2>
+    <div class="lead">"谁知道什么"由系统决定，不由对话者的嘴决定。</div>
+    <div class="body-area">
+      <div class="row3">
+        <div class="pcard">
+          <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="9" cy="11" r="2.2"/><path d="M6 16.5c.8-1.6 2-2.3 3-2.3s2.2.7 3 2.3"/><path d="M15 9.5h4M15 13h3"/></svg>
+          <h3>身份靠认证</h3>
+          <p>对面是谁由系统锚定（企业身份、设备配对）。<strong>"我是老板"这类自述，权重为零</strong></p>
+        </div>
+        <div class="pcard">
+          <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M2 12s3.5-6.5 10-6.5S22 12 22 12s-3.5 6.5-10 6.5S2 12 2 12z"/><circle cx="12" cy="12" r="2.8"/><path d="M4 20L20 4"/></svg>
+          <h3>信息分级可见</h3>
+          <p>每条信息带可见范围。无权信息在组装"视野"时<strong>根本不进入</strong>——而不是"要求它保密"</p>
+        </div>
+        <div class="pcard">
+          <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><ellipse cx="12" cy="6" rx="7" ry="3"/><path d="M5 6v6c0 1.7 3.1 3 7 3s7-1.3 7-3V6"/><path d="M5 12v6c0 1.7 3.1 3 7 3s7-1.3 7-3v-6"/></svg>
+          <h3>记忆双轨</h3>
+          <p><strong>事实轨</strong>：默认"未核实"，支持度随证据演进；<strong>关系轨</strong>：记得每个聊过的人、开过的每个环</p>
+        </div>
+      </div>
+      <div class="banner" style="margin-top: calc(var(--u)*2.4)">同一个客户第三次来，它记得前两次——<strong style="color:#ffd98a">关系记忆</strong>是最让对面觉得"是个人"的部分</div>
+    </div>
+    <div class="foot"><span>数字分身 · 设计讲解</span><span>09 / 13</span></div>
+  </div>
+</section>
+
+<!-- ═══════ P10 成长闭环 ═══════ -->
+<section class="slide" id="p10">
+  <div class="frame">
+    <div class="kicker">成 长</div>
+    <h2>越用越聪明，且永远不会"悄悄变坏"</h2>
+    <div class="body-area" style="flex-direction:row; align-items:center; gap: calc(var(--u)*4)">
+      <svg viewBox="0 0 480 400" style="width:42%">
+        <defs>
+          <marker id="ar3" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6.5" markerHeight="6.5" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10z" fill="#3f51c1"/></marker>
+        </defs>
+        <g fill="none" stroke="#3f51c1" stroke-width="3">
+          <path d="M 240 74 A 146 146 0 0 1 386 200" marker-end="url(#ar3)"/>
+          <path d="M 380 254 A 146 146 0 0 1 254 344" marker-end="url(#ar3)"/>
+          <path d="M 200 342 A 146 146 0 0 1 98 254" marker-end="url(#ar3)"/>
+          <path d="M 96 200 A 146 146 0 0 1 186 78" marker-end="url(#ar3)"/>
+        </g>
+        <text x="240" y="192" text-anchor="middle" font-size="26" font-weight="800" fill="#1b2333">越用越像</text>
+        <text x="240" y="222" text-anchor="middle" font-size="16" fill="#8a92a6">成长 = 主人签名 + 证据门槛</text>
+        <g font-size="17" font-weight="700" fill="#1b2333">
+          <rect x="176" y="26" width="128" height="46" rx="23" fill="#eef0fb" stroke="#3f51c1" stroke-width="1.6"/>
+          <text x="240" y="55" text-anchor="middle">① 日常使用</text>
+          <rect x="330" y="176" width="128" height="46" rx="23" fill="#eef0fb" stroke="#3f51c1" stroke-width="1.6"/>
+          <text x="394" y="205" text-anchor="middle">② 主人纠正</text>
+          <rect x="176" y="330" width="128" height="46" rx="23" fill="#eef0fb" stroke="#3f51c1" stroke-width="1.6"/>
+          <text x="240" y="359" text-anchor="middle">③ 确认入卡</text>
+          <rect x="22" y="176" width="128" height="46" rx="23" fill="#eef0fb" stroke="#3f51c1" stroke-width="1.6"/>
+          <text x="86" y="205" text-anchor="middle">④ 回归测试</text>
+        </g>
+      </svg>
+      <div style="flex:1; display:flex; flex-direction:column; gap: calc(var(--u)*1.8)">
+        <div class="pcard" style="border-top-color:#1d7a53">
+          <h3 style="color:#1d7a53">防投毒</h3>
+          <p>陌生人的诱导<strong>改不了</strong>分身的行为；任何能力变更都必须由主人确认签名</p>
+        </div>
+        <div class="pcard">
+          <h3>防漂移</h3>
+          <p>每次变更自动跑行为测试；模型升级后自动重跑——行为变化永远有解释、可回退</p>
+        </div>
+        <div class="pcard" style="border-top-color:#b06a1f">
+          <h3>可回溯</h3>
+          <p>"它为什么变成这样了？"——每个版本都有 diff，都能回答</p>
+        </div>
+      </div>
+    </div>
+    <div class="foot"><span>数字分身 · 设计讲解</span><span>10 / 13</span></div>
+  </div>
+</section>
+
+<!-- ═══════ P11 KPI ═══════ -->
+<section class="slide" id="p11">
+  <div class="frame">
+    <div class="kicker">衡 量</div>
+    <h2>设计里内建的四个硬指标</h2>
+    <div class="body-area">
+      <div class="row2" style="grid-template-columns:1fr 1fr 1fr 1fr; gap: calc(var(--u)*2)">
+        <div class="kpi">
+          <div class="t s">安全底线</div>
+          <svg viewBox="0 0 120 120">
+            <circle cx="60" cy="60" r="46" fill="none" stroke="#e4e7ef" stroke-width="13"/>
+            <circle cx="60" cy="60" r="46" fill="none" stroke="#1d7a53" stroke-width="13" stroke-dasharray="289 289" stroke-linecap="round" transform="rotate(-90 60 60)"/>
+            <text x="60" y="68" text-anchor="middle" font-size="26" font-weight="800" fill="#1d7a53">100%</text>
+          </svg>
+          <div class="nm">越界拦截率</div>
+          <div class="ds">该拦的动作全部拦住<br>安全红线 · 一票否决</div>
+        </div>
+        <div class="kpi">
+          <div class="t s">安全底线</div>
+          <svg viewBox="0 0 120 120">
+            <circle cx="60" cy="60" r="46" fill="none" stroke="#e4e7ef" stroke-width="13"/>
+            <circle cx="60" cy="60" r="46" fill="none" stroke="#b06a1f" stroke-width="13" stroke-dasharray="15 274" stroke-linecap="round" transform="rotate(-90 60 60)"/>
+            <text x="60" y="68" text-anchor="middle" font-size="26" font-weight="800" fill="#b06a1f">&lt;5%</text>
+          </svg>
+          <div class="nm">事后否决率</div>
+          <div class="ds">分身做完、被主人推翻的比例<br>账本结果回填 · 自动统计</div>
+        </div>
+        <div class="kpi">
+          <div class="t f">保真目标</div>
+          <svg viewBox="0 0 120 120">
+            <circle cx="60" cy="60" r="46" fill="none" stroke="#e4e7ef" stroke-width="13"/>
+            <circle cx="60" cy="60" r="46" fill="none" stroke="#3f51c1" stroke-width="13" stroke-dasharray="231 289" stroke-linecap="round" transform="rotate(-90 60 60)"/>
+            <text x="60" y="68" text-anchor="middle" font-size="26" font-weight="800" fill="#3f51c1">≥80%</text>
+          </svg>
+          <div class="nm">行为预测准确率</div>
+          <div class="ds">主人能预判分身反应的比例<br>"可托付"的直接度量</div>
+        </div>
+        <div class="kpi">
+          <div class="t f">保真目标</div>
+          <svg viewBox="0 0 120 120">
+            <polyline points="18,92 46,74 70,80 102,34" fill="none" stroke="#3f51c1" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/>
+            <path d="M84 34 h20 v20" fill="none" stroke="#3f51c1" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/>
+            <circle cx="18" cy="92" r="5" fill="#c6cbd8"/>
+          </svg>
+          <div class="nm">盲测难分辨率</div>
+          <div class="ds">主人分不清哪句是自己写的比例<br>"越来越像"的量化 · 持续上升</div>
+        </div>
+      </div>
+    </div>
+    <div class="foot"><span>数字分身 · 设计讲解</span><span>11 / 13</span></div>
+  </div>
+</section>
+
+<!-- ═══════ P12 落地节奏 ═══════ -->
+<section class="slide" id="p12">
+  <div class="frame">
+    <div class="kicker">落 地</div>
+    <h2>设计按三期展开，每期独立可用</h2>
+    <div class="body-area">
+      <div class="road">
+        <div class="phase">
+          <div class="dot">v1</div>
+          <div class="box">
+            <h3>可托付 —— 敢上线</h3>
+            <p>权限闸门 · 身份认证 · 回归测试 · 结果与视野回执</p>
+            <span class="ms">里程碑：挂上企业微信，对外真实使用</span>
+          </div>
+        </div>
+        <div class="phase">
+          <div class="dot">v2</div>
+          <div class="box">
+            <h3>越用越像 —— 客户记得住</h3>
+            <p>纠正式学习 · 证据门槛 · 记忆支持度 · 关系档案</p>
+            <span class="ms">里程碑：同一客户三次来访，它记得前两次</span>
+          </div>
+        </div>
+        <div class="phase">
+          <div class="dot">v3</div>
+          <div class="box">
+            <h3>有自己的时间 —— 主动服务</h3>
+            <p>状态感知 · 主动汇报与提醒（同样过权限闸门）</p>
+            <span class="ms">里程碑：主动汇报"您交代的事有结果了"</span>
+          </div>
+        </div>
+      </div>
+      <div class="banner" style="margin-top: calc(var(--u)*2.6)">不是一次性交付：每一期结束都是一个<strong style="color:#ffd98a">完整可用的系统</strong>，用一期、评一期</div>
+    </div>
+    <div class="foot"><span>数字分身 · 设计讲解</span><span>12 / 13</span></div>
+  </div>
+</section>
+
+<!-- ═══════ P13 结语 ═══════ -->
+<section class="slide" id="p13">
+  <div class="frame" style="justify-content:center">
+    <div class="kicker">结 语</div>
+    <h2 style="margin-bottom: calc(var(--u)*2.6)">用一句话概括这套设计</h2>
+    <div class="quotebox">
+      把数字分身当成一个<b>「持牌代理」</b>来建：<br>
+      牌照（授权）是数据，<br>
+      行为准则（策略）是可测试的规则，<br>
+      成长（学习）是经过主人签名的提交——<br>
+      而不是一段越调越不像的提示词。
+    </div>
+    <div style="text-align:center; font-size: calc(var(--u)*1.3); color: var(--faint); margin-top: calc(var(--u)*3)">详细设计（概念模型 · 六个关键决策 · 组件分解）见《数字分身系统设计文档》v0.1</div>
+    <div class="foot" style="margin-top: calc(var(--u)*3)"><span>数字分身 · 设计讲解</span><span>13 / 13</span></div>
+  </div>
+</section>
+
+</div>
+
+<!-- HUD -->
+<div class="dots" id="dots"></div>
+<div class="hud">
+  <button id="prev" aria-label="上一页">‹</button>
+  <div class="pg" id="pg">1 / 13</div>
+  <button id="next" aria-label="下一页">›</button>
+</div>
+
+<script>
+  const deck = document.getElementById('deck');
+  const slides = [...document.querySelectorAll('.slide')];
+  const dotsBox = document.getElementById('dots');
+  slides.forEach((s, i) => {
+    const a = document.createElement('a');
+    a.href = '#' + s.id;
+    a.title = '第 ' + (i + 1) + ' 页';
+    dotsBox.appendChild(a);
+  });
+  const dots = [...dotsBox.children];
+  const pg = document.getElementById('pg');
+  let cur = 0;
+  const io = new IntersectionObserver(entries => {
+    entries.forEach(e => {
+      if (e.isIntersecting) {
+        cur = slides.indexOf(e.target);
+        pg.textContent = (cur + 1) + ' / ' + slides.length;
+        dots.forEach((d, i) => d.classList.toggle('on', i === cur));
+      }
+    });
+  }, { root: deck, threshold: 0.55 });
+  slides.forEach(s => io.observe(s));
+  const go = i => {
+    cur = Math.max(0, Math.min(slides.length - 1, i));
+    slides[cur].scrollIntoView({ behavior: 'smooth' });
+  };
+  document.getElementById('prev').onclick = () => go(cur - 1);
+  document.getElementById('next').onclick = () => go(cur + 1);
+  document.addEventListener('keydown', e => {
+    if (['ArrowRight', 'ArrowDown', 'PageDown', ' '].includes(e.key)) { e.preventDefault(); go(cur + 1); }
+    else if (['ArrowLeft', 'ArrowUp', 'PageUp'].includes(e.key)) { e.preventDefault(); go(cur - 1); }
+    else if (e.key === 'Home') { e.preventDefault(); go(0); }
+    else if (e.key === 'End') { e.preventDefault(); go(slides.length - 1); }
+  });
+</script>
+</body>
+</html>
