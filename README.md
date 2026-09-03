@@ -22,7 +22,7 @@
 
 ## 快速开始
 
-前提：已安装 dsh（桌面版或 `npm i -g` 的 dsh CLI）与 Node.js。
+**前提**：先装好 [dsh-desktop](https://github.com/lomehong/dsh-desktop)（Tauri 桌面壳，承载 harness 与本套件的宿主进程），并确保 Node.js 可用。本仓库**不包含** dsh-desktop 源码——它单独维护，与本套件独立升级；`install-all.bat` 会自动定位桌面版 DSH_HOME（`%LOCALAPPDATA%\dsh-desktop-app-data\home`）。
 
 ```bat
 git clone --recurse-submodules https://github.com/lomehong/digital-twin.git
