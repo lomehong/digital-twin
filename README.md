@@ -17,6 +17,7 @@
 | [dsh-computer](https://github.com/lomehong/dsh-computer) | `@dsh-extra/dsh-computer` | 电脑操作：截图/鼠标/键盘/窗口/剪贴板 |
 | [dsh-redact](https://github.com/lomehong/dsh-redact) | `@dsh-extra/dsh-redact` | 出站脱敏：分身对外产出先脱敏再放行 |
 | [dsh-yuyi](https://github.com/lomehong/dsh-yuyi) | `dsh-yuyi` | 御驿通信：跨 Agent 寻址、收件箱、任务协作 |
+| [dsh-task-board](https://github.com/lomehong/dsh-task-board) | `@dsh-extra/dsh-task-board` | 任务看板：Host 权威账本、cron 调度、真实分身会话执行、账本裁决闭环（实施中） |
 
 生态工具（不在本套件内，各自独立）：[dsh-plugin-manager](https://github.com/lomehong/dsh-plugin-manager)（插件管理与侧载）、[dsh-remote](https://github.com/lomehong/dsh-remote)（远程访问）。
 

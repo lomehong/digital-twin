@@ -25,3 +25,6 @@
 [submodule "dsh-yuyi"]
 	path = dsh-yuyi
 	url = https://github.com/lomehong/dsh-yuyi.git
+[submodule "dsh-task-board"]
+	path = dsh-task-board
+	url = https://github.com/lomehong/dsh-task-board.git
