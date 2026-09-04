@@ -1,0 +1,3 @@
+packages:
+  - dsh-*
+  - dsh-im-bot/*
