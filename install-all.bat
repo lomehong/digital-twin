@@ -97,6 +97,7 @@ const PLUGINS = [
   { dir: 'dsh-memory',     pkg: '@dsh-extra/dsh-memory',     bundle: true },
   { dir: 'dsh-redact',     pkg: '@dsh-extra/dsh-redact',     bundle: true },
   { dir: 'dsh-regression', pkg: '@dsh-extra/dsh-regression', bundle: true },
+  { dir: 'dsh-task-board', pkg: '@dsh-extra/dsh-task-board', bundle: true },
   { dir: 'dsh-twin',       pkg: '@dsh-extra/dsh-twin',       bundle: true },
   { dir: 'dsh-yuyi',       pkg: 'dsh-yuyi',                  bundle: true },
 ]
