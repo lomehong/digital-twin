@@ -21,6 +21,10 @@
   | 会话层 | harness tool-todo/goal/jobs | 这个会话里这一步怎么干（执行脚手架，随会话生灭） |
   | 协同层 | 御驿任务链（dsh-yuyi 任务记忆） | 哪些活委派给了哪个远端协作者、干到哪了（跨 Agent 明细） |
 - 治理：分身对外行动受委托账本 L0-L3 约束；主任的批准/否决回流分身学习循环。
+- 知识定位：**知识 = 种子化的权威事实记忆 + harness 技能**，不另建独立知识库。知识种子
+  （dsh-twin 向导）以 `statementType: 事实`、`source.origin: seed` 落入 dsh-memory；
+  领域技能经 harness 技能体系（skill-filesystem / tool-skill）挂载。检索质量成为瓶颈时，
+  再评估独立知识存储（当前决策：不建）。
 - 协同位阶：御驿体系内本分身居于 avatar 主理位，worker/coder 是跨设备协作者。
 
 **组织形态**：套件是**插件联邦**——各成员共同实现上述模型，但彼此独立成活（§1）。
@@ -114,7 +118,7 @@
 | 02 | ✅ 已销账（2026-09-05） | dsh-memory 存储位于 `~/.dsh/im-channel/credentials/`——写在兄弟插件目录下（违反原则三）且无视 `DSH_HOME`（多实例静默共享） | 存储迁至 `$DSH_HOME/dsh-memory/shared-memory.json`（归档同迁）；首次读取自动从旧路径迁移，旧文件保留作备份。已验证迁移链路 |
 | 03 | ✅ 已销账（2026-09-05） | im-channel 消费的 `masking` 服务全工作区无提供者，出站脱敏静默空转（违反原则二的"显式"要求） | dsh-redact `provide('masking')`（`maskTextSync`，会话键 `im-channel-out` 保证占位符跨消息一致，命中计入统计）；im-channel 首次缺失时 WARN 一次（显式降级） |
 | 04 | ✅ 已销账（2026-09-05） | dsh-twin 仪表盘/关系档案聚合兄弟插件 HTTP 端点，缺席时的降级表现未逐一保证 | 仪表盘登记缺席数据源：对应卡片显示「— / 提供方插件未安装」灰态，全部缺席且无待办时不再显示"一切正常"空态 |
-| 05 | 🟡 登记 | im-channel `bindings.json` 与渠道凭证位于机器级 `~/.dsh/im-channel/`（跨实例共享；历史路径，暂容忍） | 评估迁移至 `$DSH_HOME`，与 02 同批处理（02 已完成，05 待排期） |
+| 05 | 🟡 部分销账（2026-09-05） | im-channel `bindings.json` 位于机器级 `~/.dsh/im-channel/`（跨实例共享） | **bindings 已迁**：`$DSH_HOME/im-channel/bindings.json`，首次读取自旧路径回退迁移，旧文件保留备份；渠道登录凭证仍留机器级（迁移需重新扫码授权，待排期） |
 | 06 | 🟡 登记 | 御驿状态位于机器级 `~/.yuyi`（跨框架 seam，协议使然） | 属 §3.3 允许的例外，README 已标注理由；维持 |
 
 > 登记册由套件维护者更新；销账需在对应插件仓库留有整改提交并在本表标注结果。
@@ -126,6 +130,12 @@
 > - dsh-ledger 挂接 `tools/post-execute` 执行留痕（已放行→已执行闭环，markExecutedForAction 按动作匹配，isError 不留痕）；
 > - dsh-memory 管理 API 增加同源门禁（带 Origin 且跨源一律 403，覆盖 token 下发与全部读写路由）；
 > - smoke 脚本硬编码绝对路径改为可移植相对路径；dsh-ledger 补声明 typescript/vitest/@types/node devDeps。
+> 补充整改记录（2026-09-05，第三阶段·分身能力深化）：
+> - 分身向导：全新配置（人格未配置）默认勾选「设为默认预设」——开箱即分身；已保存配置以用户选择为准；
+> - **actors 可选软接线**：im-channel 会话创建/恢复时顺带在 dsh-actors 注册对话者实体（主人 bindMaster 锚定、访客 provision 为生人）；actors 缺席/失败静默跳过，身份基线仍由渠道 userId 自持（宪章 §3.4）；
+> - **按回合记忆装配**：dsh-memory 服务面新增 `assemblePack`（装配 + 审计回执），im-channel 以 `memoryAssemblePerTurn` 配置开关接入（**默认关**），开启后逐回合注入相关记忆包，装配失败不阻断派发；
+> - **HostRunner 接入**：dsh-regression 经宿主 typertGateway 驱动真实分身会话跑回归场景（每个场景一个临时 digital-twin 会话，轮询 turn/end 结算并抽取分身真实回复）；「按策略 + policyRef」场景需策略命中标注，host 模式跳过；
+> - **知识层定位**写入宪章 §0：知识 = 种子化权威事实记忆 + harness 技能，不另建独立知识库。
 
 ---
 
