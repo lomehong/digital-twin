@@ -56,7 +56,7 @@
 |---|---|---|---|---|
 | **dsh-twin**（分身核心） | `dsh-twin`（noteActor / seedMemory / enqueueLearning 等） | agentPresets、systemPrompt、settings、sessions、webServer、timer | dsh-memory（知识种子/记忆整合）→ 缺席则种子不落库；dsh-ledger（主动汇报闸）→ 缺席则跳过闸门；im-channel（转人工/主动投递）→ 缺席则报错文案+能力收窄；dsh-actors / dsh-regression（关系档案/影子数据）→ HTTP 探测，缺席则卡片空态 | ✅ 人格注入与管理 UI 完整；增强项按上降级 |
 | **dsh-memory**（共享记忆） | `dsh-memory`（早加载，见 §4 注） | webServer（可选） | im-channel（渠道身份挂载）→ 缺席则预设工具行以 master 视角工作；dsh-actors（别名归一）→ 规划中，缺席则按原始 userId 过滤 | ✅ |
-| **dsh-task-board**（任务看板） | web 路由 + 客户端看板 + `task_report` 模型工具（tools 入口，分身上报执行结果） | webServer、session APIs、agentPresets | dsh-ledger（L0-L3 治理裁决）→ **现状：缺席即拒绝执行（违宪，见 §5-01，整改中）**；目标态：内嵌最小本地策略的"无治理模式" | ⚠️ 整改中 |
+| **dsh-task-board**（任务看板） | web 路由 + 客户端看板 + `task_report` 模型工具（tools 入口，分身上报执行结果） | webServer、session APIs、agentPresets | dsh-ledger（L0-L3 治理裁决）→ 缺席走本地降级（L0/L1 放行标注、L2 拦截、L3 拒绝，§5-01 已销账）；dsh-memory（任务结果沉淀为「已验证结果」记忆）→ 缺席则仅看板+账本留痕；im-channel（L2 降级通知主任）→ 缺席跳过通知 | ✅ |
 | **dsh-yuyi**（御驿通信） | `yuyi` + `yuyi_*` 工具 | agents、settings | 无套件依赖 | ✅（套件零耦合标杆） |
 | **dsh-actors**（实体注册表） | `dsh-actors` | webServer（可选） | dsh-memory（关系档案聚合）→ 缺席则仅注册表视图 | ✅ |
 | **dsh-ledger**（委托账本） | `dsh-ledger`；`tools/pre-execute` 治理钩子 | webServer | dsh-twin（否决回流学习）→ 可选 | ✅ |
@@ -114,7 +114,7 @@
 
 | # | 状态 | 描述 | 整改方向 |
 |---|---|---|---|
-| 01 | ✅ 已销账（2026-09-05） | dsh-task-board 在 dsh-ledger 缺席时 fail-closed 拒绝执行任务（核心功能不可用，违反原则二/3.5） | 已实现**本地降级策略**（governance.ts `adjudicateLocal`）：L0/L1 放行标注「无账本治理」、L2 放行 + 尽力经 im-channel 通知主任（注入式 notifier，缺席跳过）、L3 拒绝且任务保留待办列；`state().governance.mode` 驱动客户端治理徽标（✓ 治理就绪 / ⚠ 本地降级）；账本在场行为与原版完全一致。测试 36/36 |
+| 01 | ✅ 已销账（2026-09-05） | dsh-task-board 在 dsh-ledger 缺席时 fail-closed 拒绝执行任务（核心功能不可用，违反原则二/3.5） | 已实现**本地降级策略**（governance.ts `adjudicateLocal`）：L0/L1 放行标注「无账本治理」、~~L2 放行 + 尽力通知~~ **L2 拦截 + 尽力通知（审计 F-02 修订：降级不扩权，宪章 §3.2）**、L3 拒绝且任务保留待办列；`state().governance.mode` 驱动客户端治理徽标（✓ 治理就绪 / ⚠ 本地降级）；账本在场行为与原版完全一致。测试 41/41 |
 | 02 | ✅ 已销账（2026-09-05） | dsh-memory 存储位于 `~/.dsh/im-channel/credentials/`——写在兄弟插件目录下（违反原则三）且无视 `DSH_HOME`（多实例静默共享） | 存储迁至 `$DSH_HOME/dsh-memory/shared-memory.json`（归档同迁）；首次读取自动从旧路径迁移，旧文件保留作备份。已验证迁移链路 |
 | 03 | ✅ 已销账（2026-09-05） | im-channel 消费的 `masking` 服务全工作区无提供者，出站脱敏静默空转（违反原则二的"显式"要求） | dsh-redact `provide('masking')`（`maskTextSync`，会话键 `im-channel-out` 保证占位符跨消息一致，命中计入统计）；im-channel 首次缺失时 WARN 一次（显式降级） |
 | 04 | ✅ 已销账（2026-09-05） | dsh-twin 仪表盘/关系档案聚合兄弟插件 HTTP 端点，缺席时的降级表现未逐一保证 | 仪表盘登记缺席数据源：对应卡片显示「— / 提供方插件未安装」灰态，全部缺席且无待办时不再显示"一切正常"空态 |
@@ -160,6 +160,15 @@
 > 教训入册：**修复一个失效的安全机制前，必须先审计它在真实环境下会拦截什么**。
 > 遗留登记：#05 渠道登录凭证仍机器级（迁移需重新扫码授权，待排期）；#06 御驿 seam 维持例外；
 > 「按策略 + policyRef」host 回归需宿主侧策略命中标注（已在 host-runner 跳过并注释）
+> 补充整改记录（2026-09-05，任务记忆沉淀——决策五「记忆是经验积累」落地，审计路线 P1-6）：
+> - dsh-task-board 任务落定终态（task_report 自报或 turn-end 兜底结算）自动把结果摘要写入
+>   dsh-memory：`statementType=已验证结果` + `verify={status:'已验证', method:'看板结算'}`、
+>   `type=task`、`scope=master`、`source={origin:'task-board', ref:任务号}`——主任问
+>   「最近完成了哪些工作」即可被 tool-memory / 按回合装配检索到；
+> - 惰性解析接入（`injectMemoryGetter`，与 dsh-ledger 同形态）：dsh-memory 缺席 WARN 一次
+>   显式降级，写入失败不影响看板终态；成功与失败都写（失败同样是已验证的经验）；
+> - 宪章 §2 dsh-task-board 行同步更新（矩阵新增 dsh-memory 增强方向；#01 销账描述
+>   同步 F-02 后的 L2 拦截语义）。测试 41/41（新增 memory.spec.ts 4 用例）。
 
 ---
 
