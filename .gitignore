@@ -11,3 +11,4 @@ scripts/backup-*/
 # 生态工具（独立仓库，不属分身套件核心）
 dsh-plugin-manager/
 dsh-remote/
+.zcode/
