@@ -152,6 +152,12 @@
 > - **G-04**：dsh-regression 补 vitest devDep + classifyHostOutput 4 个单测；dsh-memory 建 vitest 骨架
 >   （迁移/可见性/装配回执 4 用例）
 > - **F-07**：宪章 §2 redact/im-channel 行修正；预设头注释 CONVERSATION-FIRST → conversation-first governed agent
+> **⚠ 自锁事故记录（2026-09-05，已根治）**：F-01 修复让账本执行闸首次真实运行后，
+> 其「未知名兜底 L2」策略把 read/pwsh/grep 等日常工作工具全数拦截（含主人会话），
+> 分身瘫痪。根因：闸机制与闸策略从未一起核对过真实工具面——机制长期失效掩盖了
+> 策略缺陷。根治：闸改为 **opt-in**（只裁决显式声明 args.actionType 的调用，普通
+> 工具一律放行=决策六），health.gatePolicyProbe 常备探针，探针失败记入 issues。
+> 教训入册：**修复一个失效的安全机制前，必须先审计它在真实环境下会拦截什么**。
 > 遗留登记：#05 渠道登录凭证仍机器级（迁移需重新扫码授权，待排期）；#06 御驿 seam 维持例外；
 > 「按策略 + policyRef」host 回归需宿主侧策略命中标注（已在 host-runner 跳过并注释）
 
