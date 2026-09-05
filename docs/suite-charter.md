@@ -62,8 +62,8 @@
 | **dsh-ledger**（委托账本） | `dsh-ledger`；`tools/pre-execute` 治理钩子 | webServer | dsh-twin（否决回流学习）→ 可选 | ✅ |
 | **dsh-regression**（回归/影子） | `dsh-regression` | webServer | — | ✅（HostRunner 待接入） |
 | **dsh-computer**（电脑操作） | `computer` | settings | — | ✅ |
-| **dsh-redact**（出站脱敏） | `redact`（llm/stream 钩子）；规划：可选提供 `masking` | settings、llm | — | ✅ |
-| **im-channel**（IM 渠道，dsh-im-bot） | `im-channel`（pushToUser / botsStatus / reload） | agents、agentPresets、approval/question、workspaceRegistry | dsh-memory（共享记忆挂载）→ 缺席则渠道会话按各自隔离；dsh-twin.noteActor（身份标注）→ 可选；`masking`（出站脱敏）→ 缺席需**显式标注**（现状静默，见 §5-04） | ✅ |
+| **dsh-redact**（出站脱敏） | `redact`（llm/stream 钩子）+ `masking`（已提供，im-channel 出站脱敏消费） | settings、llm | — | ✅ |
+| **im-channel**（IM 渠道，dsh-im-bot） | `im-channel`（pushToUser / botsStatus / reload） | agents、agentPresets、approval/question、workspaceRegistry | dsh-memory（共享记忆挂载 + 按回合装配开关）→ 缺席则渠道会话按各自隔离；dsh-twin.noteActor（身份标注）→ 可选；`masking`（出站脱敏，dsh-redact 提供）→ 缺席首次 WARN 显式降级（原登记 #03 已销账） | ✅ |
 | **ui-settings-im**（IM 设置界面） | settings.plugins.tab + shell.overlay | runtime、locale、slots | — | ✅ |
 
 ---
@@ -136,6 +136,24 @@
 > - **按回合记忆装配**：dsh-memory 服务面新增 `assemblePack`（装配 + 审计回执），im-channel 以 `memoryAssemblePerTurn` 配置开关接入（**默认关**），开启后逐回合注入相关记忆包，装配失败不阻断派发；
 > - **HostRunner 接入**：dsh-regression 经宿主 typertGateway 驱动真实分身会话跑回归场景（每个场景一个临时 digital-twin 会话，轮询 turn/end 结算并抽取分身真实回复）；「按策略 + policyRef」场景需策略命中标注，host 模式跳过；
 > - **知识层定位**写入宪章 §0：知识 = 种子化权威事实记忆 + harness 技能，不另建独立知识库。
+> 补充整改记录（2026-09-05，审计响应闭环：第一/第二轮审计 F-01～F-07、G-01～G-04）：
+> - **F-01（Blocking）账本执行闸按宿主真实契约重写**：waterfall(exec, next)、exec.name/arguments 取动作、
+>   放行 {kind:'allow'} / 拦截 {kind:'deny', reason}；留痕改 callId→recordId 精确登记（isError 亦留痕）；
+>   移除按动作模糊匹配的 markExecutedForAction；health.gateChannel 标注真实契约
+> - **F-02**：无账本 L2 改为拦截（不扩权，宪章 §3.2），任务保留待办列并尽力通知主任；
+>   task-board-decisions.md 决策二已补宪章修订备注
+> - **F-03**：task_report 以 exec.agent.id 与运行记录执行会话比对，不一致拒绝落终态（防伪造）
+> - **F-04**：dsh-ledger 新增 GET /dsh-ledger/approvals；今日待办渲染待批列表 + 批准/驳回按钮，
+>   批准后解析 digest 中看板任务号自动重跑（授权在位，grantCovers 放行）
+> - **G-01**：actors 身份增强改在 router 绑定点以真实渠道 kind 注册（移除 driver 硬编码 'im'）；
+>   主人锚定冲突 WARN 不静默
+> - **G-02**：bind-store 测试隔离 DSH_HOME（防真实数据经迁移回退泄入断言）；持久化断言更新到实例级新路径
+> - **G-03**：回归会话改名 regression-<场景id> 供审计；沙箱工作区建议与风险注记已写入 host-runner
+> - **G-04**：dsh-regression 补 vitest devDep + classifyHostOutput 4 个单测；dsh-memory 建 vitest 骨架
+>   （迁移/可见性/装配回执 4 用例）
+> - **F-07**：宪章 §2 redact/im-channel 行修正；预设头注释 CONVERSATION-FIRST → conversation-first governed agent
+> 遗留登记：#05 渠道登录凭证仍机器级（迁移需重新扫码授权，待排期）；#06 御驿 seam 维持例外；
+> 「按策略 + policyRef」host 回归需宿主侧策略命中标注（已在 host-runner 跳过并注释）
 
 ---
 
