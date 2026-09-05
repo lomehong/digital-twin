@@ -54,9 +54,9 @@
 
 | 插件 | 提供 | 宿主消费 | 套件增强（缺席降级） | 单独可用性 |
 |---|---|---|---|---|
-| **dsh-twin**（分身核心） | `dsh-twin`（noteActor / seedMemory / enqueueLearning 等） | agentPresets、systemPrompt、settings、sessions、webServer、timer | dsh-memory（知识种子/记忆整合）→ 缺席则种子不落库；dsh-ledger（主动汇报闸）→ 缺席则跳过闸门；im-channel（转人工/主动投递）→ 缺席则报错文案+能力收窄；dsh-actors / dsh-regression（关系档案/影子数据）→ HTTP 探测，缺席则卡片空态 | ✅ 人格注入与管理 UI 完整；增强项按上降级 |
+| **dsh-twin**（分身核心） | `dsh-twin`（noteActor / seedMemory / enqueueLearning 等） | agentPresets、systemPrompt、settings、sessions、webServer、timer | dsh-memory（知识种子/记忆整合）→ 缺席则种子不落库；dsh-ledger（主动汇报闸）→ 缺席则跳过闸门；im-channel（转人工/主动投递）→ 缺席则报错文案+能力收窄；dsh-task-board（activity() 活动视图，活动区段唯一数据源）→ 缺席则活动区段整体降级为空；dsh-actors / dsh-regression（关系档案/影子数据）→ HTTP 探测，缺席则卡片空态 | ✅ 人格注入与管理 UI 完整；增强项按上降级 |
 | **dsh-memory**（共享记忆） | `dsh-memory`（早加载，见 §4 注） | webServer（可选） | im-channel（渠道身份挂载）→ 缺席则预设工具行以 master 视角工作；dsh-actors（别名归一）→ 规划中，缺席则按原始 userId 过滤 | ✅ |
-| **dsh-task-board**（任务看板） | web 路由 + 客户端看板 + `task_report` 模型工具（tools 入口，分身上报执行结果） | webServer、session APIs、agentPresets | dsh-ledger（L0-L3 治理裁决）→ 缺席走本地降级（L0/L1 放行标注、L2 拦截、L3 拒绝，§5-01 已销账）；dsh-memory（任务结果沉淀为「已验证结果」记忆）→ 缺席则仅看板+账本留痕；im-channel（L2 降级通知主任）→ 缺席跳过通知 | ✅ |
+| **dsh-task-board**（任务看板 = 唯一活动权威） | web 路由 + 客户端看板 + 模型工具（tools 入口：`task_report` 上报 / `task_delegate` 对话内下单）+ `dsh-task-board` 服务（`state()` 状态 / `activity()` 活动视图，tick 每 15s 刷新） | webServer、session APIs、agentPresets、typertGateway | dsh-ledger（L0-L3 治理裁决）→ 缺席走本地降级（L0/L1 放行标注、L2 拦截、L3 拒绝，§5-01 已销账）；dsh-memory（任务结果沉淀为「已验证结果」记忆）→ 缺席则仅看板+账本留痕；im-channel（L2 降级通知主任）→ 缺席跳过通知 | ✅ |
 | **dsh-yuyi**（御驿通信） | `yuyi` + `yuyi_*` 工具 | agents、settings | 无套件依赖 | ✅（套件零耦合标杆） |
 | **dsh-actors**（实体注册表） | `dsh-actors` | webServer（可选） | dsh-memory（关系档案聚合）→ 缺席则仅注册表视图 | ✅ |
 | **dsh-ledger**（委托账本） | `dsh-ledger`；`tools/pre-execute` 治理钩子 | webServer | dsh-twin（否决回流学习）→ 可选 | ✅ |
@@ -161,6 +161,18 @@
 > 教训入册：**修复一个失效的安全机制前，必须先审计它在真实环境下会拦截什么**。
 > 遗留登记：#05 渠道登录凭证仍机器级（迁移需重新扫码授权，待排期）；#06 御驿 seam 维持例外；
 > 「按策略 + policyRef」host 回归需宿主侧策略命中标注（已在 host-runner 跳过并注释）
+> 补充整改记录（2026-09-05，第五批·全局活动感知 + 对话内下单，主任拍板：**看板 = 唯一活动权威**）：
+> - dsh-task-board：tick 顺带维护**活动视图缓存**（进行中任务的执行现场 / 待审批 /
+>   运行中自由会话（未归属任务，经 session/list 观察，排除任务现场）/ 最近完成 5 条），
+>   provide 扩展为 `state()` + `activity()`（同步读缓存，绝无网络等待）；
+> - dsh-twin：新增 `twin-activity` systemPrompt 区段（order 27）——每轮对话同步读看板缓存，
+>   主任在**任何通道**问「在忙什么」都自带全局视野；**访客完全不可见**（拍板 3）；
+>   空闲/看板缺席 → 空串零 token；twin 不做活动聚合（废弃直连 typertGateway 的草案）：
+>   **看板是大脑，twin 只是报告者**；
+> - 对话内下单：tools 入口新增 `task_delegate`（主任口头布置 → `createWithGovernance`
+>   立项即预裁决（L2+ 产生审批令牌，fail-closed）→ `run_now` 立即执行；cron 任务默认不立即跑）
+>   ——决策五「会话归属任务」的数据闭环自此打通；
+> - 可见性红线：活动视图含其他工作现场标题，访客视图一律不注入（同源/tokens 门禁照旧）。
 > 补充整改记录（2026-09-05，任务记忆沉淀——决策五「记忆是经验积累」落地，审计路线 P1-6）：
 > - dsh-task-board 任务落定终态（task_report 自报或 turn-end 兜底结算）自动把结果摘要写入
 >   dsh-memory：`statementType=已验证结果` + `verify={status:'已验证', method:'看板结算'}`、
