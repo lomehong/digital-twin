@@ -52,7 +52,7 @@
 |---|---|---|---|---|
 | **dsh-twin**（分身核心） | `dsh-twin`（noteActor / seedMemory / enqueueLearning 等） | agentPresets、systemPrompt、settings、sessions、webServer、timer | dsh-memory（知识种子/记忆整合）→ 缺席则种子不落库；dsh-ledger（主动汇报闸）→ 缺席则跳过闸门；im-channel（转人工/主动投递）→ 缺席则报错文案+能力收窄；dsh-actors / dsh-regression（关系档案/影子数据）→ HTTP 探测，缺席则卡片空态 | ✅ 人格注入与管理 UI 完整；增强项按上降级 |
 | **dsh-memory**（共享记忆） | `dsh-memory`（早加载，见 §4 注） | webServer（可选） | im-channel（渠道身份挂载）→ 缺席则预设工具行以 master 视角工作；dsh-actors（别名归一）→ 规划中，缺席则按原始 userId 过滤 | ✅ |
-| **dsh-task-board**（任务看板） | web 路由 + 客户端看板 | webServer、session APIs、agentPresets | dsh-ledger（L0-L3 治理裁决）→ **现状：缺席即拒绝执行（违宪，见 §5-01，整改中）**；目标态：内嵌最小本地策略的"无治理模式" | ⚠️ 整改中 |
+| **dsh-task-board**（任务看板） | web 路由 + 客户端看板 + `task_report` 模型工具（tools 入口，分身上报执行结果） | webServer、session APIs、agentPresets | dsh-ledger（L0-L3 治理裁决）→ **现状：缺席即拒绝执行（违宪，见 §5-01，整改中）**；目标态：内嵌最小本地策略的"无治理模式" | ⚠️ 整改中 |
 | **dsh-yuyi**（御驿通信） | `yuyi` + `yuyi_*` 工具 | agents、settings | 无套件依赖 | ✅（套件零耦合标杆） |
 | **dsh-actors**（实体注册表） | `dsh-actors` | webServer（可选） | dsh-memory（关系档案聚合）→ 缺席则仅注册表视图 | ✅ |
 | **dsh-ledger**（委托账本） | `dsh-ledger`；`tools/pre-execute` 治理钩子 | webServer | dsh-twin（否决回流学习）→ 可选 | ✅ |
@@ -119,6 +119,13 @@
 
 > 登记册由套件维护者更新；销账需在对应插件仓库留有整改提交并在本表标注结果。
 > 补充整改记录（2026-09-05，随 01-04 同批）：im-channel 补声明缺失的 devDep `@deepseek-ai/dsh-util-values`（修复 wecom-mcp-registry 构建错误）。
+> 补充整改记录（2026-09-05，第二批·任务层间挂链 + 安全加固）：
+> - dsh-task-board 新增 `task_report` 模型工具（tools 入口 + dsh-twin 预设条件追加，预设版本 8→9）：分身上报结构化执行结果，直接落定运行记录终态并回填账本真实摘要；turn/end 推断降级为兜底；
+> - 看板投递提示词声明三层任务契约（task_report 上报 / todo-goal 属会话脚手架 / 御驿委派沿用看板任务号）；
+> - 修复 cron 触发任务提示词误标「手动触发」的死代码（launchScheduled 并入 launch(trigger)）；新增可配置投递重试（launchRetries，默认关闭）；
+> - dsh-ledger 挂接 `tools/post-execute` 执行留痕（已放行→已执行闭环，markExecutedForAction 按动作匹配，isError 不留痕）；
+> - dsh-memory 管理 API 增加同源门禁（带 Origin 且跨源一律 403，覆盖 token 下发与全部读写路由）；
+> - smoke 脚本硬编码绝对路径改为可移植相对路径；dsh-ledger 补声明 typescript/vitest/@types/node devDeps。
 
 ---
 
