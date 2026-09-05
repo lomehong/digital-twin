@@ -178,7 +178,21 @@
 >   goal（L2：L1 级 2 轮 / L2 级 3 轮，经 `goals/create` 远程面，播种失败降级 turn/end 结算）；
 >   ③结算感知 goal 相位（L4 判断采**不结算继续等**：active → 下一轮、complete → 成功、
 >   blocked → 失败带受阻原因、paused 走 legacy）；④task_delegate 描述补自由会话目标转正
->   指引（L3）。goal 治理权归宿主（只读不写，跨包纪律照旧）。
+>   指引（L3）。goal **状态**治理权归宿主：看板只对自己创建的执行会话做 goals/create
+>   播种与事件折叠读取，不暂停/改写/终结 goal（跨包纪律照旧）。
+> - **六角色团队评审修复（安全/并发/架构/测试/SRE/主任体验，2026-09-05）**：
+>   ①tick 整体兜底 catch——任何 fs/网关抖动不得以 unhandledRejection 击穿宿主（SRE H1）；
+>   ②结算 transact 内复查「运行中」（并发 Medium-1 覆盖竞态闭合）；
+>   ③turn/end reason 白名单：aborted/interrupted → 已取消、error/blocked/max-tokens → 失败，
+>   中止不再洗成"成功"（Medium-2）；④滞留兜底：运行中超 6h 强制取消（High-2 死区收敛）；
+>   ⑤task_delegate 调用方会话绑定 + 外发/破坏性动词强制提级（L0/L1→L2、破坏性→L3）+
+>   createWithGovernance 全级别落账本（digest 含 prompt 摘要）——封堵降级申报旁路（安全 H1）；
+>   ⑥/dsh-memory/assemble 收敛为 token 门禁（安全 H2：不信任请求体自报 isMaster）；
+>   ⑦scheduler 空载零写入（SRE H2：无命中绝不 transact）；⑧driver 硬编码 'im' 的
+>   重复 actors 注册路径移除，统一 router onActorsBind（架构 M-1）；⑨governance 头注释
+>   同步 L2 拦截语义（架构 M-2）；⑩provide 收窄为 activity 专用视图——完整 state 仅走
+>   同源 HTTP 供浏览器 UI（架构 M-3，服务面同受访客红线约束）；⑪dashboard 重跑失败
+>   显性化告知主任（架构 L-2）。
 > 补充整改记录（2026-09-05，任务记忆沉淀——决策五「记忆是经验积累」落地，审计路线 P1-6）：
 > - dsh-task-board 任务落定终态（task_report 自报或 turn-end 兜底结算）自动把结果摘要写入
 >   dsh-memory：`statementType=已验证结果` + `verify={status:'已验证', method:'看板结算'}`、
