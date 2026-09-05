@@ -173,6 +173,12 @@
 >   立项即预裁决（L2+ 产生审批令牌，fail-closed）→ `run_now` 立即执行；cron 任务默认不立即跑）
 >   ——决策五「会话归属任务」的数据闭环自此打通；
 > - 可见性红线：活动视图含其他工作现场标题，访客视图一律不注入（同源/tokens 门禁照旧）。
+> - **原生 goal 联动（L1-L4 一批，主任拍板全量）**：①看板 tick 为自由会话折叠 `goal/change`
+>   （L1）——活动视图新增 `goals` 维度（objective 截断 40 字，封顶 3）；②执行会话播种原生
+>   goal（L2：L1 级 2 轮 / L2 级 3 轮，经 `goals/create` 远程面，播种失败降级 turn/end 结算）；
+>   ③结算感知 goal 相位（L4 判断采**不结算继续等**：active → 下一轮、complete → 成功、
+>   blocked → 失败带受阻原因、paused 走 legacy）；④task_delegate 描述补自由会话目标转正
+>   指引（L3）。goal 治理权归宿主（只读不写，跨包纪律照旧）。
 > 补充整改记录（2026-09-05，任务记忆沉淀——决策五「记忆是经验积累」落地，审计路线 P1-6）：
 > - dsh-task-board 任务落定终态（task_report 自报或 turn-end 兜底结算）自动把结果摘要写入
 >   dsh-memory：`statementType=已验证结果` + `verify={status:'已验证', method:'看板结算'}`、
