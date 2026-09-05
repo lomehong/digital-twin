@@ -192,7 +192,8 @@
 >   重复 actors 注册路径移除，统一 router onActorsBind（架构 M-1）；⑨governance 头注释
 >   同步 L2 拦截语义（架构 M-2）；⑩provide 收窄为 activity 专用视图——完整 state 仅走
 >   同源 HTTP 供浏览器 UI（架构 M-3，服务面同受访客红线约束）；⑪dashboard 重跑失败
->   显性化告知主任（架构 L-2）。
+>   显性化告知主任（架构 L-2）；⑫goals 维度翻页改 follow 取 cursor 反向取最新窗口
+>   （并发 High-1：throughSeq:0 只返回会话第一条事件——该维度曾因此静默失效）。
 > 补充整改记录（2026-09-05，任务记忆沉淀——决策五「记忆是经验积累」落地，审计路线 P1-6）：
 > - dsh-task-board 任务落定终态（task_report 自报或 turn-end 兜底结算）自动把结果摘要写入
 >   dsh-memory：`statementType=已验证结果` + `verify={status:'已验证', method:'看板结算'}`、
