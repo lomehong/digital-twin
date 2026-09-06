@@ -195,7 +195,11 @@
 >   显性化告知主任（架构 L-2）；⑫goals 维度翻页改 follow 取 cursor 反向取最新窗口
 >   （并发 High-1：throughSeq:0 只返回会话第一条事件——该维度曾因此静默失效）；
 >   ⑬task_delegate 输出补声明 action_level 并加「返回键 ⊆ output schema」回归测试
->   （宿主按 additionalProperties:false 校验工具输出，多余键即拒——主任会话实测发现）。
+>   （宿主按 additionalProperties:false 校验工具输出，多余键即拒——主任会话实测发现）；
+>   ⑭账本已知动作表扩展（主任拍板）：开发/修复/重构/编码/写文档/整理汇报/提交代码 → L1
+>   （内部开发动作放行留痕，终结"未知类型兜底 L2"卡死开发任务的问题）；
+>   ⑮task_delegate 关键词地板 v2：只对明确对外/破坏性词提级（v1 把"删除几行 DEBUG 打印"
+>   误伤成 L3 致任务永不执行）+ 看板 ▶ 执行反馈弹窗（治理拦截/待审批不再静默无响应）。
 > 补充整改记录（2026-09-05，任务记忆沉淀——决策五「记忆是经验积累」落地，审计路线 P1-6）：
 > - dsh-task-board 任务落定终态（task_report 自报或 turn-end 兜底结算）自动把结果摘要写入
 >   dsh-memory：`statementType=已验证结果` + `verify={status:'已验证', method:'看板结算'}`、
