@@ -11,16 +11,16 @@
 
 **一个 dsh 实例 = 一个数字分身。**
 
-- 主任（owner）通过对话、IM 渠道、任务看板安排任务；**分身是唯一执行主体**。
+- 主人（owner）通过对话、IM 渠道、任务看板安排任务；**分身是唯一执行主体**。
 - 分身的配套资产是**实例级全局**的，跨所有会话与渠道共享：人设（四卡：身份/策略/样例/状态）、记忆（共享记忆库）、知识（种子 + 技能）、任务（看板）。
 - 会话只是分身的多个"对话窗口"：主人与访客看到的是同一人格的不同隐私投影，不存在按会话分裂的人格。
 - 任务分三层，职责互斥：
   | 层级 | 载体 | 回答的问题 |
   |---|---|---|
-  | 全局层 | 任务看板（dsh-task-board） | 分身有哪些任务、进展如何（主任视角） |
+  | 全局层 | 任务看板（dsh-task-board） | 分身有哪些任务、进展如何（主人视角） |
   | 会话层 | harness tool-todo/goal/jobs | 这个会话里这一步怎么干（执行脚手架，随会话生灭） |
   | 协同层 | 御驿任务链（dsh-yuyi 任务记忆） | 哪些活委派给了哪个远端协作者、干到哪了（跨 Agent 明细） |
-- 治理：分身对外行动受委托账本 L0-L3 约束；主任的批准/否决回流分身学习循环。
+- 治理：分身对外行动受委托账本 L0-L3 约束；主人的批准/否决回流分身学习循环。
 - 知识定位：**知识 = 种子化的权威事实记忆 + harness 技能**，不另建独立知识库。知识种子
   （dsh-twin 向导）以 `statementType: 事实`、`source.origin: seed` 落入 dsh-memory；
   领域技能经 harness 技能体系（skill-filesystem / tool-skill）挂载。检索质量成为瓶颈时，
@@ -56,7 +56,7 @@
 |---|---|---|---|---|
 | **dsh-twin**（分身核心） | `dsh-twin`（noteActor / seedMemory / enqueueLearning 等） | agentPresets、systemPrompt、settings、sessions、webServer、timer | dsh-memory（知识种子/记忆整合）→ 缺席则种子不落库；dsh-ledger（主动汇报闸）→ 缺席则跳过闸门；im-channel（转人工/主动投递）→ 缺席则报错文案+能力收窄；dsh-task-board（activity() 活动视图，活动区段唯一数据源）→ 缺席则活动区段整体降级为空；dsh-actors / dsh-regression（关系档案/影子数据）→ HTTP 探测，缺席则卡片空态 | ✅ 人格注入与管理 UI 完整；增强项按上降级 |
 | **dsh-memory**（共享记忆） | `dsh-memory`（早加载，见 §4 注） | webServer（可选） | im-channel（渠道身份挂载）→ 缺席则预设工具行以 master 视角工作；dsh-actors（别名归一）→ 规划中，缺席则按原始 userId 过滤 | ✅ |
-| **dsh-task-board**（任务看板 = 唯一活动权威） | web 路由 + 客户端看板 + 模型工具（tools 入口：`task_report` 上报 / `task_delegate` 对话内下单）+ `dsh-task-board` 服务（`state()` 状态 / `activity()` 活动视图，tick 每 15s 刷新） | webServer、session APIs、agentPresets、typertGateway | dsh-ledger（L0-L3 治理裁决）→ 缺席走本地降级（L0/L1 放行标注、L2 拦截、L3 拒绝，§5-01 已销账）；dsh-memory（任务结果沉淀为「已验证结果」记忆）→ 缺席则仅看板+账本留痕；im-channel（L2 降级通知主任）→ 缺席跳过通知 | ✅ |
+| **dsh-task-board**（任务看板 = 唯一活动权威） | web 路由 + 客户端看板 + 模型工具（tools 入口：`task_report` 上报 / `task_delegate` 对话内下单）+ `dsh-task-board` 服务（`state()` 状态 / `activity()` 活动视图，tick 每 15s 刷新） | webServer、session APIs、agentPresets、typertGateway | dsh-ledger（L0-L3 治理裁决）→ 缺席走本地降级（L0/L1 放行标注、L2 拦截、L3 拒绝，§5-01 已销账）；dsh-memory（任务结果沉淀为「已验证结果」记忆）→ 缺席则仅看板+账本留痕；im-channel（L2 降级通知主人）→ 缺席跳过通知 | ✅ |
 | **dsh-yuyi**（御驿通信） | `yuyi` + `yuyi_*` 工具 | agents、settings | 无套件依赖 | ✅（套件零耦合标杆） |
 | **dsh-actors**（实体注册表） | `dsh-actors` | webServer（可选） | dsh-memory（关系档案聚合）→ 缺席则仅注册表视图 | ✅ |
 | **dsh-ledger**（委托账本） | `dsh-ledger`；`tools/pre-execute` 治理钩子 | webServer | dsh-twin（否决回流学习）→ 可选 | ✅ |
@@ -142,7 +142,7 @@
 > - **F-01（Blocking）账本执行闸按宿主真实契约重写**：waterfall(exec, next)、exec.name/arguments 取动作、
 >   放行 {kind:'allow'} / 拦截 {kind:'deny', reason}；留痕改 callId→recordId 精确登记（isError 亦留痕）；
 >   移除按动作模糊匹配的 markExecutedForAction；health.gateChannel 标注真实契约
-> - **F-02**：无账本 L2 改为拦截（不扩权，宪章 §3.2），任务保留待办列并尽力通知主任；
+> - **F-02**：无账本 L2 改为拦截（不扩权，宪章 §3.2），任务保留待办列并尽力通知主人；
 >   task-board-decisions.md 决策二已补宪章修订备注
 > - **F-03**：task_report 以 exec.agent.id 与运行记录执行会话比对，不一致拒绝落终态（防伪造）
 > - **F-04**：dsh-ledger 新增 GET /dsh-ledger/approvals；今日待办渲染待批列表 + 批准/驳回按钮，
@@ -162,26 +162,26 @@
 > 教训入册：**修复一个失效的安全机制前，必须先审计它在真实环境下会拦截什么**。
 > 遗留登记：#05 渠道登录凭证仍机器级（迁移需重新扫码授权，待排期）；#06 御驿 seam 维持例外；
 > 「按策略 + policyRef」host 回归需宿主侧策略命中标注（已在 host-runner 跳过并注释）
-> 补充整改记录（2026-09-05，第五批·全局活动感知 + 对话内下单，主任拍板：**看板 = 唯一活动权威**）：
+> 补充整改记录（2026-09-05，第五批·全局活动感知 + 对话内下单，主人拍板：**看板 = 唯一活动权威**）：
 > - dsh-task-board：tick 顺带维护**活动视图缓存**（进行中任务的执行现场 / 待审批 /
 >   运行中自由会话（未归属任务，经 session/list 观察，排除任务现场）/ 最近完成 5 条），
 >   provide 扩展为 `state()` + `activity()`（同步读缓存，绝无网络等待）；
 > - dsh-twin：新增 `twin-activity` systemPrompt 区段（order 27）——每轮对话同步读看板缓存，
->   主任在**任何通道**问「在忙什么」都自带全局视野；**访客完全不可见**（拍板 3）；
+>   主人在**任何通道**问「在忙什么」都自带全局视野；**访客完全不可见**（拍板 3）；
 >   空闲/看板缺席 → 空串零 token；twin 不做活动聚合（废弃直连 typertGateway 的草案）：
 >   **看板是大脑，twin 只是报告者**；
-> - 对话内下单：tools 入口新增 `task_delegate`（主任口头布置 → `createWithGovernance`
+> - 对话内下单：tools 入口新增 `task_delegate`（主人口头布置 → `createWithGovernance`
 >   立项即预裁决（L2+ 产生审批令牌，fail-closed）→ `run_now` 立即执行；cron 任务默认不立即跑）
 >   ——决策五「会话归属任务」的数据闭环自此打通；
 > - 可见性红线：活动视图含其他工作现场标题，访客视图一律不注入（同源/tokens 门禁照旧）。
-> - **原生 goal 联动（L1-L4 一批，主任拍板全量）**：①看板 tick 为自由会话折叠 `goal/change`
+> - **原生 goal 联动（L1-L4 一批，主人拍板全量）**：①看板 tick 为自由会话折叠 `goal/change`
 >   （L1）——活动视图新增 `goals` 维度（objective 截断 40 字，封顶 3）；②执行会话播种原生
 >   goal（L2：L1 级 2 轮 / L2 级 3 轮，经 `goals/create` 远程面，播种失败降级 turn/end 结算）；
 >   ③结算感知 goal 相位（L4 判断采**不结算继续等**：active → 下一轮、complete → 成功、
 >   blocked → 失败带受阻原因、paused 走 legacy）；④task_delegate 描述补自由会话目标转正
 >   指引（L3）。goal **状态**治理权归宿主：看板只对自己创建的执行会话做 goals/create
 >   播种与事件折叠读取，不暂停/改写/终结 goal（跨包纪律照旧）。
-> - **六角色团队评审修复（安全/并发/架构/测试/SRE/主任体验，2026-09-05）**：
+> - **六角色团队评审修复（安全/并发/架构/测试/SRE/主人体验，2026-09-05）**：
 >   ①tick 整体兜底 catch——任何 fs/网关抖动不得以 unhandledRejection 击穿宿主（SRE H1）；
 >   ②结算 transact 内复查「运行中」（并发 Medium-1 覆盖竞态闭合）；
 >   ③turn/end reason 白名单：aborted/interrupted → 已取消、error/blocked/max-tokens → 失败，
@@ -193,29 +193,29 @@
 >   重复 actors 注册路径移除，统一 router onActorsBind（架构 M-1）；⑨governance 头注释
 >   同步 L2 拦截语义（架构 M-2）；⑩provide 收窄为 activity 专用视图——完整 state 仅走
 >   同源 HTTP 供浏览器 UI（架构 M-3，服务面同受访客红线约束）；⑪dashboard 重跑失败
->   显性化告知主任（架构 L-2）；⑫goals 维度翻页改 follow 取 cursor 反向取最新窗口
+>   显性化告知主人（架构 L-2）；⑫goals 维度翻页改 follow 取 cursor 反向取最新窗口
 >   （并发 High-1：throughSeq:0 只返回会话第一条事件——该维度曾因此静默失效）；
 >   ⑬task_delegate 输出补声明 action_level 并加「返回键 ⊆ output schema」回归测试
->   （宿主按 additionalProperties:false 校验工具输出，多余键即拒——主任会话实测发现）；
->   ⑭账本已知动作表扩展（主任拍板）：开发/修复/重构/编码/写文档/整理汇报/提交代码 → L1
+>   （宿主按 additionalProperties:false 校验工具输出，多余键即拒——主人会话实测发现）；
+>   ⑭账本已知动作表扩展（主人拍板）：开发/修复/重构/编码/写文档/整理汇报/提交代码 → L1
 >   （内部开发动作放行留痕，终结"未知类型兜底 L2"卡死开发任务的问题）；
 >   ⑮task_delegate 关键词地板 v2：只对明确对外/破坏性词提级（v1 把"删除几行 DEBUG 打印"
 >   误伤成 L3 致任务永不执行）+ 看板 ▶ 执行反馈弹窗（治理拦截/待审批不再静默无响应）；
->   ⑯对话内批准闭环：tools 入口新增 `task_approve`（主任说"同意/批准"→ 账本 approve →
+>   ⑯对话内批准闭环：tools 入口新增 `task_approve`（主人说"同意/批准"→ 账本 approve →
 >   自动重跑；防自批强校验：调用会话 ≠ 执行会话，令牌过期 fail-closed）+ twin 活动区段
 >   待审批行补任务号——审批全链路（布置→执行→上报→批准→沉淀）在对话内即可完成；
->   ⑰对话内认领执行：tools 入口新增 `task_claim`（主任说"同意/开始"→ 模型认领任务到当前
+>   ⑰对话内认领执行：tools 入口新增 `task_claim`（主人说"同意/开始"→ 模型认领任务到当前
 >   会话执行——run 绑定调用会话 + claimed 标记；认领即治理裁决，L1 放行/L2 拦截/L3 拒绝；
 >   结算等 task_report，turn/end 不结算，滞留由 stuck 兜底）——「模型 inline 实施」从看板
 >   盲区变成看板跟踪的执行现场，与 task_delegate 派发互补（在场认领 / 不在场派发）；
->   ⑱验收语义升级（主任拍板）：**分身自报 ≠ 完成，主人确认才是完成**——task_report
->   自报后任务进「待确认」（非终态，保持进行中列），主任在今日待办确认/驳回后才落定
->   终态；确认的结果以「已验证结果（主任背书）」沉淀记忆，驳回记失败；账本 fillResult
->   标注「待主任确认」；self-confirm 防线：看板派发的无人执行会话不能确认自己的自报。
+>   ⑱验收语义升级（主人拍板）：**分身自报 ≠ 完成，主人确认才是完成**——task_report
+>   自报后任务进「待确认」（非终态，保持进行中列），主人在今日待办确认/驳回后才落定
+>   终态；确认的结果以「已验证结果（主人背书）」沉淀记忆，驳回记失败；账本 fillResult
+>   标注「待主人确认」；self-confirm 防线：看板派发的无人执行会话不能确认自己的自报。
 > 补充整改记录（2026-09-05，任务记忆沉淀——决策五「记忆是经验积累」落地，审计路线 P1-6）：
 > - dsh-task-board 任务落定终态（task_report 自报或 turn-end 兜底结算）自动把结果摘要写入
 >   dsh-memory：`statementType=已验证结果` + `verify={status:'已验证', method:'看板结算'}`、
->   `type=task`、`scope=master`、`source={origin:'task-board', ref:任务号}`——主任问
+>   `type=task`、`scope=master`、`source={origin:'task-board', ref:任务号}`——主人问
 >   「最近完成了哪些工作」即可被 tool-memory / 按回合装配检索到；
 > - 惰性解析接入（`injectMemoryGetter`，与 dsh-ledger 同形态）：dsh-memory 缺席 WARN 一次
 >   显式降级，写入失败不影响看板终态；成功与失败都写（失败同样是已验证的经验）；
@@ -255,3 +255,4 @@ grep -rn "inject = \[" <plugin>/src | grep -E "dsh-(memory|twin|ledger|actors|re
 | v1.0 | 2026-09-05 | 首次成文：概念模型、联邦四原则、依赖矩阵、合规细则、范本、违规登记册、准入检查 |
 | v1.1 | 2026-09-05 | 审计响应闭环（F-01~F-07、G-01~G-04、R-01~R-04）：自锁事故记录与 opt-in 闸策略、知识定位入 §0、准入清单固化「改动仓测试全绿 + 工作区干净」 |
 | v1.2 | 2026-09-09 | 新成员 dsh-architect 准入（架构师 Agent 阶段 3 工具化）：提供覆盖检查服务与三个模型工具；纯函数零持久化、无套件依赖、输出键 ⊆ output schema 纪律以测试固化（24 用例全绿）；预设工具行条件装配（装了才有行，没装预设依然可用） |
+| v1.3 | 2026-09-09 | 术语统一：正文旧称谓更正为「主人」（与 §0「主人与访客」、master 语义一致；主人 2026-09-09 拍板，覆盖 §0/§2/§5 及 task-board-decisions.md） |
