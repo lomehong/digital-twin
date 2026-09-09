@@ -1,7 +1,7 @@
 # digital-twin · 数字分身套件
 
 基于 [DeepSeek Harness（dsh）](https://github.com/lomehong) 的数字分身完整插件套件。
-本仓库是**总仓库（meta-repo）**：用 git submodule 组织组成数字分身的 9 个独立插件仓库，
+本仓库是**总仓库（meta-repo）**：用 git submodule 组织组成数字分身的 10 个独立插件仓库，
 并附带一键安装与全量构建/测试脚本。
 
 ## 套件组成
@@ -23,12 +23,33 @@
 
 ## 快速开始
 
-**前提**：先装好 [dsh-desktop](https://github.com/lomehong/dsh-desktop)（Tauri 桌面壳，承载 harness 与本套件的宿主进程），并确保 Node.js 可用。本仓库**不包含** dsh-desktop 源码——它单独维护，与本套件独立升级；`install-all.bat` 会自动定位桌面版 DSH_HOME（`%LOCALAPPDATA%\dsh-desktop-app-data\home`）。
+**前提**：先装好 [dsh-desktop](https://github.com/lomehong/dsh-desktop)（Tauri 桌面壳，承载 harness 与本套件的宿主进程），Node.js 与 pnpm 在 PATH。本仓库**不包含** dsh-desktop 源码——它单独维护，与本套件独立升级；安装脚本会自动定位桌面版 DSH_HOME（`%LOCALAPPDATA%\dsh-desktop-app-data\home`）。
+
+### 方式 A：直接安装发布版（推荐，无需克隆源码、无需构建）
+
+各插件仓库均为公开仓库，CI 在每次发版时把可安装 tarball 挂到 GitHub Release：
+
+```bat
+git clone https://github.com/lomehong/digital-twin.git   :: 不需要 --recurse-submodules
+cd digital-twin
+install-all.bat -Release   :: 逐个探测各插件最新 Release，装已发布的、跳过未发布的（逐行报告）
+```
+
+依赖直接写 Release tarball 的固定 URL（`/releases/latest/download/<name>-latest.tgz`），
+重跑一遍即更新到各插件最新版。也可以只装单个插件：
+
+```bat
+dsh plugin --profile web add https://github.com/lomehong/dsh-twin/releases/latest/download/dsh-twin-latest.tgz
+```
+
+装完重启 dsh 即生效（宿主按包内 `dsh.bundle` 声明自动登记插件层）。
+
+### 方式 B：开发者源码安装（link: 模式）
 
 ```bat
 git clone --recurse-submodules https://github.com/lomehong/digital-twin.git
 cd digital-twin
-install-all.bat        :: 一键把 9 个插件以 link: 模式装进 dsh web profile
+install-all.bat        :: 一键把 10 个插件仓库（共 11 个包，im-bot 含 2 个）以 link: 模式装进 dsh web profile
 ```
 
 `install-all.bat` 会自动定位 Node.js 与 DSH_HOME（桌面版优先）、按 package.json
@@ -42,6 +63,16 @@ tool-memory / tool-yuyi / tool-computer 工具行）。装完重启 dsh 即生�
 scripts\build-all.bat   :: 按目录序构建全部插件（tsc + client bundle）
 scripts\test-all.bat    :: 跑全部插件测试套件，任一失败即报
 ```
+
+## 发版流程（维护者纪律）
+
+每个插件仓库独立发版，**发版 = 打 tag，tag = CI 发布**。`scripts\release.bat` 把纪律固化成机械步骤——只允许从 main 发版、工作区必须干净、本地测试必须全绿，任一不满足直接拒绝；通过后自动 bump 版本、提交、打 tag 并推送，tag 推送即触发该仓库的 release CI（typecheck/test/build → 发布包审计 → tarball 挂 GitHub Release）。
+
+```bat
+scripts\release.bat dsh-twin patch    :: 也可 minor / major / 具体版本号
+```
+
+机制保障：没有 tag 就没有发版（不会误发）；tag 与 package.json 版本不一致时 CI 审计直接拒绝（不会发错版本）；bump、commit、tag、push 由脚本一次完成（不会"推了代码忘推 tag"）。发版完成后回总仓库更新子模块指针（见下节）。
 
 ## 子模块日常操作
 

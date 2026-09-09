@@ -40,8 +40,8 @@ if %errorlevel% neq 0 (
     goto :fail
 )
 
-rem ==== run installer; %~dp0 (this file's dir) is the plugin repo root ====
-"%NODE_EXE%" "%JSFILE%" "%~dp0."
+rem ==== run installer; %~dp0 (this file's dir) is the plugin repo root; %* forwards mode flags (-Release) ====
+"%NODE_EXE%" "%JSFILE%" "%~dp0." %*
 set "RC=%errorlevel%"
 del "%JSFILE%" >nul 2>nul
 if %RC% neq 0 goto :fail
@@ -63,7 +63,13 @@ exit /b %RC%
 /**
  * DSH local plugin installer (embedded in install-all.bat; do not run directly).
  *
- * Usage (from the bat): node <temp-file> <repo-root>
+ * Usage (from the bat): node <temp-file> <repo-root> [-Release]
+ *
+ * -Release: end-user mode. Dependencies point at each plugin repo's GitHub
+ * Release tarball (stable URL: /releases/latest/download/<name>-latest.tgz)
+ * instead of local link: dirs — no submodule checkout, no build toolchain.
+ * Repos without a release yet are probed (HEAD) and skipped with a warning;
+ * re-run to pick up newly released plugins or updates.
  *
  * Idempotent: safe to re-run. Links local plugin dirs into the dsh web
  * profile as `link:` deps, registers them as profile bundle layers, runs
@@ -81,6 +87,8 @@ import { existsSync, readFileSync, writeFileSync, appendFileSync, rmSync } from 
 import { join, resolve } from 'node:path'
 
 const REPO_ROOT = resolve(process.argv[2] ?? process.cwd())
+/** -Release：最终用户模式，依赖直指 GitHub Release tarball，而非本地 link: 目录。 */
+const RELEASE = process.argv.slice(3).some((a) => a === '-Release' || a === '--release')
 const PROFILE = process.env.DSH_PROFILE ?? 'web'
 const desktopHome = join(process.env.LOCALAPPDATA ?? '', 'dsh-desktop-app-data', 'home')
 const home = process.env.DSH_HOME
@@ -122,17 +130,19 @@ try {
   process.exit(1)
 }
 
-for (const item of PLUGINS) {
-  const pkgDir = join(REPO_ROOT, item.dir, item.sub ?? '')
-  if (!existsSync(join(pkgDir, 'package.json'))) {
-    console.error(`[install-all] missing package.json under ${pkgDir}`)
-    process.exit(1)
-  }
-  // dsh 按 package.json 的入口加载构建产物；只装未构建的包会在启动时才爆，这里提前拦。
-  const entry = join(pkgDir, entryFile(pkgDir))
-  if (!existsSync(entry)) {
-    console.error(`[install-all] built entry not found: ${entry}\n[install-all] run "npm run build" in ${item.dir}${item.sub ? '/' + item.sub : ''} first.`)
-    process.exit(1)
+if (!RELEASE) {
+  for (const item of PLUGINS) {
+    const pkgDir = join(REPO_ROOT, item.dir, item.sub ?? '')
+    if (!existsSync(join(pkgDir, 'package.json'))) {
+      console.error(`[install-all] missing package.json under ${pkgDir}`)
+      process.exit(1)
+    }
+    // dsh 按 package.json 的入口加载构建产物；只装未构建的包会在启动时才爆，这里提前拦。
+    const entry = join(pkgDir, entryFile(pkgDir))
+    if (!existsSync(entry)) {
+      console.error(`[install-all] built entry not found: ${entry}\n[install-all] run "npm run build" in ${item.dir}${item.sub ? '/' + item.sub : ''} first.`)
+      process.exit(1)
+    }
   }
 }
 
@@ -145,10 +155,37 @@ manifest.dsh.profile.bundles ??= []
 delete manifest.dependencies['dsh-im-bot']
 manifest.dsh.profile.bundles = manifest.dsh.profile.bundles.filter(b => b !== 'dsh-im-bot')
 
-for (const { pkg, dir, sub, bundle } of PLUGINS) {
-  const link = `link:${join(REPO_ROOT, dir, sub ?? '').replace(/\\/g, '/')}`
-  manifest.dependencies[pkg] = link
-  if (bundle) manifest.dsh.profile.bundles = [...new Set([...manifest.dsh.profile.bundles, pkg])]
+// release 模式：依赖 = GitHub Release tarball 固定 URL（/releases/latest/download/<name>-latest.tgz）。
+// 先逐个 HEAD 探测，尚无 Release 的插件跳过并告警——不阻塞其余插件（宪章原则二：显式降级）。
+const releaseUrl = (item) =>
+  `https://github.com/lomehong/${item.dir}/releases/latest/download/${item.pkg.split('/').pop()}-latest.tgz`
+const AVAILABLE = new Map()
+if (RELEASE) {
+  console.log('[install-all] release mode: probing GitHub Releases ...')
+  for (const item of PLUGINS) {
+    const url = releaseUrl(item)
+    let ok = false
+    try { ok = (await fetch(url, { method: 'HEAD' })).ok } catch { /* 网络不可达 = 视作未发布 */ }
+    if (ok) AVAILABLE.set(item.pkg, url)
+    else console.warn(`[install-all]   skip ${item.pkg} (no GitHub Release yet)`)
+  }
+  if (AVAILABLE.size === 0) {
+    console.error('[install-all] no plugin has a GitHub Release yet; nothing to install.')
+    process.exit(1)
+  }
+}
+
+for (const item of PLUGINS) {
+  const { pkg, dir, sub, bundle } = item
+  if (RELEASE) {
+    const url = AVAILABLE.get(pkg)
+    if (!url) continue
+    manifest.dependencies[pkg] = url
+  } else {
+    const link = `link:${join(REPO_ROOT, dir, sub ?? '').replace(/\\/g, '/')}`
+    manifest.dependencies[pkg] = link
+  }
+  if (bundle && (!RELEASE || AVAILABLE.has(pkg))) manifest.dsh.profile.bundles = [...new Set([...manifest.dsh.profile.bundles, pkg])]
 }
 writeFileSync(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`)
 
@@ -178,7 +215,7 @@ if (pnpm === null) {
   console.error('[install-all] pnpm not found (PATH / %APPDATA%\\npm / corepack all missing). Install pnpm or Node.js with corepack.')
   process.exit(1)
 }
-console.log(`[install-all] manifest updated (${PLUGINS.length} packages), running pnpm install (via ${pnpm.via})...`)
+console.log(`[install-all] manifest updated (${RELEASE ? AVAILABLE.size : PLUGINS.length} packages${RELEASE ? ' from GitHub Releases' : ''}), running pnpm install (via ${pnpm.via})...`)
 const result = spawnSync(pnpm.cmd, [...pnpm.args, 'install'], { cwd: profileDir, stdio: 'inherit', shell: process.platform === 'win32' })
 
 // pnpm 9 on Windows creates broken junctions for cross-drive absolute link:
@@ -191,15 +228,18 @@ function fixJunction(linkPath, target) {
   return created.status === 0 && existsSync(join(linkPath, 'package.json'))
 }
 
-for (const { pkg, dir, sub } of PLUGINS) {
-  const linkPath = join(profileDir, 'node_modules', ...pkg.split('/'))
-  if (!fixJunction(linkPath, join(REPO_ROOT, dir, sub ?? ''))) {
-    console.error(`[install-all] cannot create junction: ${linkPath}`)
-    process.exit(1)
+if (!RELEASE) {
+  for (const { pkg, dir, sub } of PLUGINS) {
+    const linkPath = join(profileDir, 'node_modules', ...pkg.split('/'))
+    if (!fixJunction(linkPath, join(REPO_ROOT, dir, sub ?? ''))) {
+      console.error(`[install-all] cannot create junction: ${linkPath}`)
+      process.exit(1)
+    }
   }
-}
+} // release 模式装的是解压后的真实目录，无需 junction 修复
 
-const allLinked = PLUGINS.every(({ pkg }) => existsSync(join(profileDir, 'node_modules', ...pkg.split('/'), 'package.json')))
+const EXPECTED = RELEASE ? PLUGINS.filter(({ pkg }) => AVAILABLE.has(pkg)) : PLUGINS
+const allLinked = EXPECTED.every(({ pkg }) => existsSync(join(profileDir, 'node_modules', ...pkg.split('/'), 'package.json')))
 if (result.status !== 0 || !allLinked) {
   console.error('[install-all] install failed, see output above.')
   process.exit(1)
@@ -232,5 +272,6 @@ if (existsSync(presetYml)) {
   }
 }
 
-console.log(`[install-all] done (${PLUGINS.length} links verified)! Restart dsh web to load plugins.`)
+const skipped = RELEASE ? PLUGINS.filter(({ pkg }) => !AVAILABLE.has(pkg)).map(({ pkg }) => pkg) : []
+console.log(`[install-all] done (${EXPECTED.length} links verified${skipped.length ? `, ${skipped.length} skipped: ${skipped.join(', ')}` : ''})! Restart dsh web to load plugins.`)
 //==JS-END==
