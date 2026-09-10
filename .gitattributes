@@ -1,0 +1,10 @@
+# Windows 批处理必须按字节原样存储（-text = 不做行尾转换）：
+# cmd.exe 的批处理解析器在 LF-only 文件上会跑飞——变量展开被粘连
+# （`%NODE_EXE%%JSFILE%%~dp0.` 变成单个 token），并越过 `exit /b` 一直执行到
+# install-all.bat 里的嵌入式 JS 文本，表现为满屏「不是内部或外部命令」+ 中文乱码。
+# 实测（2026-09-10）：同一文件 CRLF 副本在完全相同的场景下正常。
+# 默认 text 属性下 git 把 blob 存成 LF，GitHub raw / Release 下载回来的就是 LF，
+# 于是「本地跑得通、下载回来跑不通」。用 -text 让 blob 保留工作区的 CRLF 字节，
+# 下载/检出即得到 cmd 能正确解析的文件。
+*.bat -text
+*.cmd -text
