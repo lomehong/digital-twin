@@ -319,6 +319,13 @@ const npmrcPath = join(profileDir, '.npmrc')
 if (!existsSync(npmrcPath) || !readFileSync(npmrcPath, 'utf8').includes('ignore-workspace-root-check=true')) {
   appendFileSync(npmrcPath, 'ignore-workspace-root-check=true\n')
 }
+// 套件插件的 @deepseek-ai/* peer 由**宿主上层 store**（<home>/profiles/node_modules）
+// 满足，pnpm 看不到那层、会在报告里逐条标 missing peer——实测运行时解析完全正常
+// （2026-09-10 逐插件 import 探针全 OK）。显式关掉严格 peer 检查：这些是信息性告警，
+// 不能让未来某个 pnpm 版本把它升级成硬错误、把生产安装整死。
+if (!existsSync(npmrcPath) || !readFileSync(npmrcPath, 'utf8').includes('strict-peer-dependencies=false')) {
+  appendFileSync(npmrcPath, 'strict-peer-dependencies=false\n')
+}
 
 // ==== locate pnpm: PATH first, then %APPDATA%\npm, then corepack ====
 // 桌面版 dsh 的 pnpm 不在 PATH（历史上 ENOENT 过）；PATH 也没有时 node 自带的
