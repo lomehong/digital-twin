@@ -68,8 +68,9 @@ exit /b %RC%
  * -Release: end-user mode. Dependencies point at each plugin repo's GitHub
  * Release tarball (stable URL: /releases/latest/download/<name>-latest.tgz)
  * instead of local link: dirs — no submodule checkout, no build toolchain.
- * Repos without a release yet are probed (HEAD) and skipped with a warning;
- * re-run to pick up newly released plugins or updates.
+ * ALL plugins must be published: a missing asset aborts before any change.
+ * The URL carries ?release=<tag>, so re-running is idempotent within one
+ * release and refetches when a new release lands (= the update path).
  *
  * Idempotent: safe to re-run. Links local plugin dirs into the dsh web
  * profile as `link:` deps, registers them as profile bundle layers, runs
@@ -83,8 +84,8 @@ exit /b %RC%
  * Env: DSH_HOME (dsh home dir), DSH_PROFILE (default: web)
  */
 import { spawnSync } from 'node:child_process'
-import { existsSync, readFileSync, writeFileSync, appendFileSync, rmSync } from 'node:fs'
-import { join, resolve } from 'node:path'
+import { existsSync, readFileSync, writeFileSync, appendFileSync, rmSync, lstatSync, mkdirSync, readdirSync } from 'node:fs'
+import { join, resolve, dirname } from 'node:path'
 
 const REPO_ROOT = resolve(process.argv[2] ?? process.cwd())
 /** -Release：最终用户模式，依赖直指 GitHub Release tarball，而非本地 link: 目录。 */
@@ -155,22 +156,43 @@ manifest.dsh.profile.bundles ??= []
 delete manifest.dependencies['dsh-im-bot']
 manifest.dsh.profile.bundles = manifest.dsh.profile.bundles.filter(b => b !== 'dsh-im-bot')
 
-// release 模式：依赖 = GitHub Release tarball 固定 URL（/releases/latest/download/<name>-latest.tgz）。
-// 先逐个 HEAD 探测，尚无 Release 的插件跳过并告警——不阻塞其余插件（宪章原则二：显式降级）。
-const releaseUrl = (item) =>
+// release 模式：依赖 = GitHub Release tarball URL（/releases/latest/download/<name>-latest.tgz）。
+// 两条 2026-09-10 需求方确认的规则：
+// ① 全量要求：任一插件缺 Release 资产即中止（套件少几块 = 工作台缺功能，比明确失败更糟），
+//    不做部分安装、不改动任何状态。
+// ② 可更新：URL 带 `?release=<tag>`（tag 取自 /releases/latest 的 302 Location，零 API 配额）。
+//    同 Release 重跑 = 同一 specifier = pnpm 幂等跳过；发了新 Release = specifier 变化 =
+//    pnpm 重新解析并下载新 tarball——「生产安装」因此同时就是「生产更新」。
+const releaseUrl = (item, tag) =>
   `https://github.com/lomehong/${item.dir}/releases/latest/download/${item.pkg.split('/').pop()}-latest.tgz`
+    + (tag ? `?release=${encodeURIComponent(tag)}` : '')
+/** 最新 Release 的 tag：跟随 github 的 302 Location，不消耗 API 配额；取不到返回 null。 */
+async function latestTag(repo) {
+  try {
+    const r = await fetch(`https://github.com/lomehong/${repo}/releases/latest`, { method: 'HEAD', redirect: 'manual' })
+    const m = /\/releases\/tag\/([^/?#]+)/.exec(r.headers.get('location') ?? '')
+    return m ? decodeURIComponent(m[1]) : null
+  } catch { return null }
+}
 const AVAILABLE = new Map()
 if (RELEASE) {
   console.log('[install-all] release mode: probing GitHub Releases ...')
+  const tags = new Map()
+  const missing = []
   for (const item of PLUGINS) {
-    const url = releaseUrl(item)
+    const url = releaseUrl(item, null)
     let ok = false
-    try { ok = (await fetch(url, { method: 'HEAD' })).ok } catch { /* 网络不可达 = 视作未发布 */ }
-    if (ok) AVAILABLE.set(item.pkg, url)
-    else console.warn(`[install-all]   skip ${item.pkg} (no GitHub Release yet)`)
+    try { ok = (await fetch(url, { method: 'HEAD' })).ok } catch { /* 网络不可达 = 视作缺失 */ }
+    if (!ok) { missing.push(`${item.pkg}  (${url})`); continue }
+    if (!tags.has(item.dir)) tags.set(item.dir, await latestTag(item.dir))
+    const tag = tags.get(item.dir)
+    // tag 拿不到时退化为时间戳戳：宁可 URL 略有噪音，也要保证「再点一次能拿到最新」
+    AVAILABLE.set(item.pkg, releaseUrl(item, tag ?? `t${Date.now()}`))
   }
-  if (AVAILABLE.size === 0) {
-    console.error('[install-all] no plugin has a GitHub Release yet; nothing to install.')
+  if (missing.length > 0) {
+    console.error(`[install-all] release install requires every plugin published; ${missing.length} missing:`)
+    for (const m of missing) console.error(`[install-all]   - ${m}`)
+    console.error('[install-all] aborted before changing anything (网络不通或该插件尚未发 Release)。')
     process.exit(1)
   }
 }
@@ -186,6 +208,43 @@ for (const item of PLUGINS) {
     manifest.dependencies[pkg] = link
   }
   if (bundle && (!RELEASE || AVAILABLE.has(pkg))) manifest.dsh.profile.bundles = [...new Set([...manifest.dsh.profile.bundles, pkg])]
+}
+
+// ==== 宿主锚定：release 模式把宿主已有的 @deepseek-ai/* 全钉到宿主版本 ====
+// 为什么必须（2026-09-10 实测）：
+// ① dsh 0.1.x 全在预发布标签上（latest 停在 0.0.1-rc.1，0.1.5-* 只在 alpha/next），
+//    插件 manifest 的普通 semver 区间（如 ^0.1.2 → >=0.1.2 <0.2.0-0）按 semver 规则
+//    匹配不到任何预发布版本 → ERR_PNPM_NO_MATCHING_VERSION，安装直接失败；
+// ② 即便能解析，也会拉进 0.1.2 线的旧副本，与宿主正在跑的版本形成双份物理实例。
+// 钉到宿主版本后：解析恒成立、版本与宿主一致、pnpm 复用宿主同一 store 实体，
+// 插件与宿主共用同一份 harness 模块（单例语义正确）。
+// link 模式则清理该字段——两个通道互相切换时不留残留，manifest 始终只有当前形态。
+function hostHarnessVersions() {
+  const scope = join(home, 'profiles', 'node_modules', '@deepseek-ai')
+  const out = {}
+  if (!existsSync(scope)) return out
+  for (const entry of readdirSync(scope)) {
+    const manifestPath = join(scope, entry, 'package.json')
+    if (!existsSync(manifestPath)) continue
+    try {
+      const version = JSON.parse(readFileSync(manifestPath, 'utf8')).version
+      if (typeof version === 'string' && version !== '') out[`@deepseek-ai/${entry}`] = version
+    } catch { /* 读不了的条目跳过：锚定是加固，不是链路必需 */ }
+  }
+  return out
+}
+if (RELEASE) {
+  const overrides = hostHarnessVersions()
+  const count = Object.keys(overrides).length
+  if (count === 0) {
+    console.error('[install-all] host store has no @deepseek-ai/* packages — run dsh web once before installing the suite.')
+    process.exit(1)
+  }
+  manifest.pnpm = { ...(manifest.pnpm ?? {}), overrides }
+  console.log(`[install-all] pinned ${count} host harness packages via pnpm.overrides`)
+} else if (manifest.pnpm?.overrides) {
+  delete manifest.pnpm.overrides
+  if (Object.keys(manifest.pnpm).length === 0) delete manifest.pnpm
 }
 writeFileSync(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`)
 
@@ -237,6 +296,66 @@ if (!RELEASE) {
     }
   }
 } // release 模式装的是解压后的真实目录，无需 junction 修复
+
+// ==== link: 模式对等依赖解析修复（真实故障 2026-09-10）====
+// junction 链接的插件经 Node ESM 按真实路径解析依赖：从插件目录向上走，
+// 永远到不了宿主 hoisted 仓库（<home>/profiles/node_modules）。插件未声明
+// （或声明了但 workspace 未装全）的 @deepseek-ai/* 导入，会在 dsh 下次启动
+// 时 ERR_MODULE_NOT_FOUND——当天 dsh-memory 的 dsh-tools 即此雷，表现为
+// 「装完一重启服务就崩」。
+// 策略：用 Node 自身做「入口 import 探针」（复现 dsh 启动的加载路径），缺
+// 哪个包就从宿主 hoisted 仓库建 junction 补进该插件 node_modules，循环到
+// 探针通过。junction 指向宿主同一物理副本——模块单例语义保持正确。
+// 浏览器端 client.js / JSX 视图不在探针范围（不经 Node 解析）。
+if (!RELEASE) {
+  const hostScope = join(home, 'profiles', 'node_modules', '@deepseek-ai')
+  const probeEntry = (entryPath) => spawnSync(process.execPath, [
+    '-e',
+    'import(process.argv[1]).then(()=>{},e=>{console.error((e.code??"")+" "+(e.message??""));process.exit(1)})',
+    'file:///' + entryPath.replace(/\\/g, '/'),
+  ], { encoding: 'utf8' })
+  for (const item of PLUGINS) {
+    const pkgDir = join(REPO_ROOT, item.dir, item.sub ?? '')
+    const entryPath = join(pkgDir, entryFile(pkgDir))
+    let probed = false
+    for (let round = 0; round < 12 && !probed; round++) {
+      const r = probeEntry(entryPath)
+      if (r.status === 0) { probed = true; break }
+      const stderr = r.stderr ?? ''
+      const m = /Cannot find package '(@deepseek-ai\/[a-z0-9-]+)'/.exec(stderr)
+      if (!m) {
+        // 非 @deepseek-ai 的解析失败 = 插件自身依赖没装全（探针复现的正是启动路径）
+        const other = /Cannot find package '([^']+)'/.exec(stderr)
+        if (other) {
+          console.error(`[install-all] ${item.pkg} cannot resolve ${other[1]} (not a host-scope package) — run "pnpm install" in ${pkgDir} first.`)
+        } else {
+          console.error(`[install-all] probe failed for ${item.pkg}: ${stderr.split('\n')[0]}`)
+        }
+        process.exit(1)
+      }
+      const dep = m[1].split('/')[1]
+      const hostPkg = join(hostScope, dep)
+      if (!existsSync(join(hostPkg, 'package.json'))) {
+        console.error(`[install-all] ${item.pkg} imports ${m[1]}, but the host store has no such package — upgrade the dsh core or fix the plugin's declared deps.`)
+        process.exit(1)
+      }
+      const linkDir = join(pkgDir, 'node_modules', '@deepseek-ai', dep)
+      mkdirSync(dirname(linkDir), { recursive: true })
+      // lstat 不跟随链接：悬空 junction（目标被清理过）也要先摘掉再重建
+      try { lstatSync(linkDir); spawnSync('cmd', ['/c', 'rmdir', linkDir], { stdio: 'ignore' }) } catch { /* name absent */ }
+      const made = spawnSync('cmd', ['/c', 'mklink', '/J', linkDir, hostPkg], { stdio: 'pipe' })
+      if (made.status !== 0 || !existsSync(join(linkDir, 'package.json'))) {
+        console.error(`[install-all] cannot create peer junction: ${linkDir} -> ${hostPkg}`)
+        process.exit(1)
+      }
+      console.log(`[install-all] repaired peer resolution: ${m[1]} -> host store (${item.pkg})`)
+    }
+    if (!probed) {
+      console.error(`[install-all] peer repair did not converge for ${item.pkg} after 12 rounds.`)
+      process.exit(1)
+    }
+  }
+}
 
 const EXPECTED = RELEASE ? PLUGINS.filter(({ pkg }) => AVAILABLE.has(pkg)) : PLUGINS
 const allLinked = EXPECTED.every(({ pkg }) => existsSync(join(profileDir, 'node_modules', ...pkg.split('/'), 'package.json')))
