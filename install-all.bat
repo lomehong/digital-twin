@@ -313,6 +313,36 @@ function hostHarnessVersions() {
   }
   return out
 }
+// pnpm ≥10 的设置新家是 pnpm-workspace.yaml（package.json 的 "pnpm" 字段不再被
+// 读取——2026-09-10 实测 pnpm 12.3.4：overrides 静默失效 + 构建脚本默认拦截，
+// ERR_PNPM_IGNORED_BUILDS 直接安装失败）。overrides（宿主锚定）与构建脚本许可
+// 统一写到 workspace yaml，对 pnpm 9/11/12 均有效；manifest 遗留 pnpm 字段一并
+// 清理（pnpm 12 会对它告警）。
+function upsertWorkspaceYaml(profileDir, managed) {
+  const CR = String.fromCharCode(13), LF = String.fromCharCode(10)
+  const EOL = new RegExp(CR + '?' + LF)
+  const wsPath = join(profileDir, 'pnpm-workspace.yaml')
+  const srcLines = existsSync(wsPath) ? readFileSync(wsPath, 'utf8').split(EOL) : []
+  const dropKeys = new Set(Object.keys(managed).map((k) => k.toLowerCase()))
+  const kept = []
+  let dropping = false
+  for (const line of srcLines) {
+    if (/^[A-Za-z][A-Za-z0-9-]*:/.test(line)) dropping = dropKeys.has(line.slice(0, line.indexOf(':')).toLowerCase())
+    if (!dropping) kept.push(line)
+  }
+  while (kept.length > 0 && kept[kept.length - 1].trim() === '') kept.pop()
+  for (const [key, value] of Object.entries(managed)) {
+    kept.push(key + ':')
+    if (Array.isArray(value)) {
+      for (const item of value) kept.push('  - ' + item)
+    } else {
+      for (const [k, v] of Object.entries(value)) kept.push('  ' + JSON.stringify(k) + ': ' + (typeof v === 'string' ? JSON.stringify(v) : String(v)))
+    }
+  }
+  writeFileSync(wsPath, kept.join(LF) + LF)
+}
+// 构建脚本许可：protobufjs/node-pty/koffi/esbuild 是套件依赖里已知带 install 脚本的包
+const BUILD_ALLOWED = { protobufjs: true, 'node-pty': true, koffi: true, esbuild: true }
 if (RELEASE) {
   const overrides = hostHarnessVersions()
   const count = Object.keys(overrides).length
@@ -320,12 +350,12 @@ if (RELEASE) {
     console.error('[install-all] host store has no @deepseek-ai/* packages — run dsh web once before installing the suite.')
     process.exit(1)
   }
-  manifest.pnpm = { ...(manifest.pnpm ?? {}), overrides }
-  console.log(`[install-all] pinned ${count} host harness packages via pnpm.overrides`)
-} else if (manifest.pnpm?.overrides) {
-  delete manifest.pnpm.overrides
-  if (Object.keys(manifest.pnpm).length === 0) delete manifest.pnpm
+  upsertWorkspaceYaml(profileDir, { overrides, allowBuilds: BUILD_ALLOWED, onlyBuiltDependencies: Object.keys(BUILD_ALLOWED) })
+  console.log(`[install-all] pinned ${count} host harness packages into pnpm-workspace.yaml overrides`)
+} else {
+  upsertWorkspaceYaml(profileDir, { allowBuilds: BUILD_ALLOWED, onlyBuiltDependencies: Object.keys(BUILD_ALLOWED) })
 }
+delete manifest.pnpm
 writeFileSync(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`)
 
 // pnpm refuses to add deps to the workspace root unless this check is off
