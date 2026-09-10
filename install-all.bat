@@ -2,19 +2,31 @@
 setlocal
 title DSH Plugin Installer
 set "RC="
-rem UTF-8 console output: 中文错误信息不再是 GBK 字节流（壳/日志按 UTF-8 读，
-rem 否则用户看到的是「系统找不到指定的文件」的乱码），也避免 codepage 影响路径。
+rem ============================================================================
+rem WARNING: keep this cmd section 100% ASCII (7-bit), comments included.
+rem cmd.exe decodes batch lines with the active codepage; multibyte characters
+rem in a batch file (especially together with `chcp 65001`) can desynchronise the
+rem parser mid-character, eating the `rem` prefix and running the comment text as
+rem commands. Real failure 2026-09-10: users saw
+rem   '<fragment>' is not recognized as an internal or external command
+rem where <fragment> was Chinese comment text from this very section.
+rem Chinese text is fine inside the embedded JS block below (after `exit /b`):
+rem cmd never executes or reads that block, node does.
+rem ============================================================================
+rem Keep console output UTF-8 so messages from the embedded installer stay
+rem readable when the shell/log decodes them as UTF-8.
 chcp 65001 >nul 2>nul
 
-rem ==== 网络环境适配 ====
-rem Node 的 fetch/undici 既不读 Windows 系统代理，又常因 IPv6 优先直连超时
-rem （2026-09-10 本机实测：系统代理 127.0.0.1:7890 已启用但无 HTTPS_PROXY 环境变量，
-rem node 直连 github.com:443 超时 10s；加 --dns-result-order=ipv4first 立即 200，
-rem 而 PowerShell 因走系统代理一直正常——典型「假故障」）。
-rem NODE_OPTIONS 会被本 bat 拉起的全部 node 子进程继承（探针 / 安装器 / pnpm）。
+rem ==== network environment ==================================================
+rem Node fetch/undici neither reads the Windows system proxy nor prefers IPv4.
+rem Measured on this machine: system proxy 127.0.0.1:7890 enabled but no
+rem HTTPS_PROXY env -> a direct github.com:443 connect timed out after 10s,
+rem while PowerShell (which does use the system proxy) always succeeded.
+rem NODE_OPTIONS is inherited by every node child this bat spawns
+rem (release probe / installer / pnpm), so IPv4-first is applied once here.
 set "NODE_OPTIONS=%NODE_OPTIONS% --dns-result-order=ipv4first"
-rem 必须走代理的环境：尊重调用方已设的 HTTPS_PROXY；Node 24 需 NODE_USE_ENV_PROXY=1
-rem 才会让 fetch 认这两个变量（pnpm 原生认）。
+rem Behind a mandatory proxy: respect an existing HTTPS_PROXY. Node 24 needs
+rem NODE_USE_ENV_PROXY=1 for fetch to honour it (pnpm reads it natively).
 set "NODE_USE_ENV_PROXY=1"
 
 rem ==== locate Node.js: PATH first, then dsh desktop bundled runtime ====
@@ -47,10 +59,11 @@ echo ==================================================
 echo.
 
 rem ==== extract embedded JS (between JS-START / JS-END markers) to temp file ====
-rem 临时目录必须挑「Windows 形态」的路径：从 Git Bash / MSYS 启动的进程会继承
-rem TEMP=/tmp（POSIX 路径），拿它拼出的 /tmp\dsh-install-all.mjs 在 Windows 上写不进去
-rem → 提取失败 → 一路走到 :fail（2026-09-10 真实故障）。逐级兜底：
-rem %TEMP%（须非 POSIX 且存在）→ %LOCALAPPDATA%\Temp → 本 bat 所在目录。
+rem The temp directory must be a Windows-style path: processes started from
+rem Git Bash / MSYS inherit TEMP=/tmp (a POSIX path), and /tmp\dsh-install-all.mjs
+rem cannot be written on Windows -> extraction fails -> :fail (real failure
+rem 2026-09-10). Fall back level by level:
+rem %TEMP% (must be non-POSIX and exist) -> %LOCALAPPDATA%\Temp -> this bat's dir.
 set "JSDIR="
 if defined TEMP if not "%TEMP:~0,1%"=="/" if exist "%TEMP%\" set "JSDIR=%TEMP%"
 if not defined JSDIR if defined LOCALAPPDATA if exist "%LOCALAPPDATA%\Temp\" set "JSDIR=%LOCALAPPDATA%\Temp"
@@ -80,15 +93,16 @@ if not defined RC set "RC=1"
 :end
 echo.
 pause
-rem RC 恒有定义：`exit /b %RC%` 在 RC 为空时可能不终止流程，cmd 会继续往下逐行
-rem 执行嵌入式 JS 文本（中文注释 + `<`/`>` 触发重定向），表现为满屏
-rem 「不是内部或外部命令」且报错乱码——2026-09-10 真实故障。
+rem RC must always be defined: `exit /b %RC%` with an empty RC may fail to stop
+rem the batch, and cmd then walks into the embedded JS text line by line
+rem (producing "is not recognized..." noise). Real failure 2026-09-10.
 if not defined RC set "RC=0"
 exit /b %RC%
 
-rem ==== 硬防护：cmd 绝不能落入下面的嵌入式 JS 文本。====
-rem 提取器按标记切片、不受本行影响；但若上面的 exit 因任何原因没生效，
-rem 这一行会立刻终止批处理，代价是 cmd 报一次 exit，而不是执行 JS 垃圾命令。
+rem ==== hard guard: cmd must never fall into the embedded JS text below ====
+rem The extractor slices by markers and ignores this line. If the exit above
+rem ever fails to take effect, this line terminates the batch immediately
+rem instead of running JS source as commands.
 exit /b 1
 
 //==JS-START==
