@@ -2,6 +2,20 @@
 setlocal
 title DSH Plugin Installer
 set "RC="
+rem UTF-8 console output: 中文错误信息不再是 GBK 字节流（壳/日志按 UTF-8 读，
+rem 否则用户看到的是「系统找不到指定的文件」的乱码），也避免 codepage 影响路径。
+chcp 65001 >nul 2>nul
+
+rem ==== 网络环境适配 ====
+rem Node 的 fetch/undici 既不读 Windows 系统代理，又常因 IPv6 优先直连超时
+rem （2026-09-10 本机实测：系统代理 127.0.0.1:7890 已启用但无 HTTPS_PROXY 环境变量，
+rem node 直连 github.com:443 超时 10s；加 --dns-result-order=ipv4first 立即 200，
+rem 而 PowerShell 因走系统代理一直正常——典型「假故障」）。
+rem NODE_OPTIONS 会被本 bat 拉起的全部 node 子进程继承（探针 / 安装器 / pnpm）。
+set "NODE_OPTIONS=%NODE_OPTIONS% --dns-result-order=ipv4first"
+rem 必须走代理的环境：尊重调用方已设的 HTTPS_PROXY；Node 24 需 NODE_USE_ENV_PROXY=1
+rem 才会让 fetch 认这两个变量（pnpm 原生认）。
+set "NODE_USE_ENV_PROXY=1"
 
 rem ==== locate Node.js: PATH first, then dsh desktop bundled runtime ====
 set "NODE_EXE=node"
@@ -33,10 +47,18 @@ echo ==================================================
 echo.
 
 rem ==== extract embedded JS (between JS-START / JS-END markers) to temp file ====
-set "JSFILE=%TEMP%\dsh-install-all.mjs"
+rem 临时目录必须挑「Windows 形态」的路径：从 Git Bash / MSYS 启动的进程会继承
+rem TEMP=/tmp（POSIX 路径），拿它拼出的 /tmp\dsh-install-all.mjs 在 Windows 上写不进去
+rem → 提取失败 → 一路走到 :fail（2026-09-10 真实故障）。逐级兜底：
+rem %TEMP%（须非 POSIX 且存在）→ %LOCALAPPDATA%\Temp → 本 bat 所在目录。
+set "JSDIR="
+if defined TEMP if not "%TEMP:~0,1%"=="/" if exist "%TEMP%\" set "JSDIR=%TEMP%"
+if not defined JSDIR if defined LOCALAPPDATA if exist "%LOCALAPPDATA%\Temp\" set "JSDIR=%LOCALAPPDATA%\Temp"
+if not defined JSDIR set "JSDIR=%~dp0"
+set "JSFILE=%JSDIR%\dsh-install-all.mjs"
 "%NODE_EXE%" -e "const fs=require('fs');const s=fs.readFileSync(process.argv[1],'utf8');const M='//==JS-STA'+'RT==';const E='//==JS-E'+'ND==';const a=s.indexOf(M)+M.length,b=s.indexOf(E);if(a<14||b<0){console.error('embedded JS not found');process.exit(2)}fs.writeFileSync(process.argv[2],s.slice(a,b))" "%~f0" "%JSFILE%"
-if %errorlevel% neq 0 (
-    echo [ERROR] failed to extract embedded installer script.
+if not exist "%JSFILE%" (
+    echo [ERROR] failed to extract embedded installer script to "%JSFILE%".
     goto :fail
 )
 
@@ -53,11 +75,21 @@ goto :end
 :fail
 echo.
 echo Install FAILED. See output above.
+if not defined RC set "RC=1"
 
 :end
 echo.
 pause
+rem RC 恒有定义：`exit /b %RC%` 在 RC 为空时可能不终止流程，cmd 会继续往下逐行
+rem 执行嵌入式 JS 文本（中文注释 + `<`/`>` 触发重定向），表现为满屏
+rem 「不是内部或外部命令」且报错乱码——2026-09-10 真实故障。
+if not defined RC set "RC=0"
 exit /b %RC%
+
+rem ==== 硬防护：cmd 绝不能落入下面的嵌入式 JS 文本。====
+rem 提取器按标记切片、不受本行影响；但若上面的 exit 因任何原因没生效，
+rem 这一行会立刻终止批处理，代价是 cmd 报一次 exit，而不是执行 JS 垃圾命令。
+exit /b 1
 
 //==JS-START==
 /**
@@ -174,6 +206,36 @@ async function latestTag(repo) {
     return m ? decodeURIComponent(m[1]) : null
   } catch { return null }
 }
+/** PowerShell 兜底探测：走 Windows 系统代理，实测比 node 直连稳定得多
+ * （本机：node fetch 对同一 URL 200/失败交替，PowerShell 一直 200）。
+ * 只解析状态码：2xx=ok、404=missing、其余/异常=unreachable。 */
+function headProbePowerShell(url) {
+  const script = "try { $r = Invoke-WebRequest -UseBasicParsing -Method Head -MaximumRedirection 5 -TimeoutSec 20 -Uri '"
+    + url + "'; $r.StatusCode } catch { if ($_.Exception.Response) { [int]$_.Exception.Response.StatusCode } else { 'ERR' } }"
+  const done = spawnSync('powershell', ['-NoProfile', '-NonInteractive', '-Command', script], { encoding: 'utf8' })
+  const out = String(done.stdout ?? '').trim().split(/\s+/).pop() ?? ''
+  if (out === '200' || out === '204') return 'ok'
+  if (out === '404') return 'missing'
+  return `unreachable(ps:${out === '' ? 'no-output' : out})`
+}
+/** 带重试的 HEAD 探测，返回 'ok' | 'missing' | 'unreachable(原因)'。
+ * 生产安装对全量有硬要求，一次网络抖动/限流不能误判成「该插件没发 Release」
+ * （2026-09-10 实测：连续两轮探测，第二轮 11 个全被判缺，实为限流）。
+ * 只有明确的 404 才算未发布；429/5xx/网络异常退避重试后仍失败记为 unreachable，
+ * 最后用 PowerShell（系统代理）兜底再判一次。 */
+async function headProbe(url, attempts = 3) {
+  let last = 'network'
+  for (let i = 0; i < attempts; i++) {
+    try {
+      const r = await fetch(url, { method: 'HEAD' })
+      if (r.ok) return 'ok'
+      if (r.status === 404) return 'missing'
+      last = `HTTP ${r.status}`
+    } catch { last = 'network' }
+    await new Promise((done) => setTimeout(done, 400 * (i + 1)))
+  }
+  return headProbePowerShell(url)
+}
 const AVAILABLE = new Map()
 if (RELEASE) {
   console.log('[install-all] release mode: probing GitHub Releases ...')
@@ -181,18 +243,22 @@ if (RELEASE) {
   const missing = []
   for (const item of PLUGINS) {
     const url = releaseUrl(item, null)
-    let ok = false
-    try { ok = (await fetch(url, { method: 'HEAD' })).ok } catch { /* 网络不可达 = 视作缺失 */ }
-    if (!ok) { missing.push(`${item.pkg}  (${url})`); continue }
+    const status = await headProbe(url)
+    if (status !== 'ok') { missing.push(`${item.pkg}  (${url}) — ${status}`); continue }
     if (!tags.has(item.dir)) tags.set(item.dir, await latestTag(item.dir))
     const tag = tags.get(item.dir)
     // tag 拿不到时退化为时间戳戳：宁可 URL 略有噪音，也要保证「再点一次能拿到最新」
     AVAILABLE.set(item.pkg, releaseUrl(item, tag ?? `t${Date.now()}`))
   }
   if (missing.length > 0) {
-    console.error(`[install-all] release install requires every plugin published; ${missing.length} missing:`)
-    for (const m of missing) console.error(`[install-all]   - ${m}`)
-    console.error('[install-all] aborted before changing anything (网络不通或该插件尚未发 Release)。')
+    const unreachable = missing.filter((line) => line.includes('unreachable'))
+    console.error(`[install-all] release install requires every plugin published; ${missing.length} unavailable:`)
+    for (const line of missing) console.error(`[install-all]   - ${line}`)
+    console.error(
+      unreachable.length > 0
+        ? '[install-all] aborted before changing anything：网络不可达或被限流（稍后重试即可）'
+        : '[install-all] aborted before changing anything：有插件尚未发布 Release'
+    )
     process.exit(1)
   }
 }
