@@ -28,6 +28,3 @@
 [submodule "dsh-task-board"]
 	path = dsh-task-board
 	url = https://github.com/lomehong/dsh-task-board.git
-[submodule "dsh-architect"]
-	path = dsh-architect
-	url = https://github.com/lomehong/dsh-architect.git

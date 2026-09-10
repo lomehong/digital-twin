@@ -65,7 +65,6 @@
 | **dsh-redact**（出站脱敏） | `redact`（llm/stream 钩子）+ `masking`（已提供，im-channel 出站脱敏消费） | settings、llm | — | ✅ |
 | **im-channel**（IM 渠道，dsh-im-bot） | `im-channel`（pushToUser / botsStatus / reload） | agents、agentPresets、approval/question、workspaceRegistry | dsh-memory（共享记忆挂载 + 按回合装配开关）→ 缺席则渠道会话按各自隔离；dsh-twin.noteActor（身份标注）→ 可选；`masking`（出站脱敏，dsh-redact 提供）→ 缺席首次 WARN 显式降级（原登记 #03 已销账） | ✅ |
 | **ui-settings-im**（IM 设置界面） | settings.plugins.tab + shell.overlay | runtime、locale、slots | — | ✅ |
-| **dsh-architect**（架构师检查器） | `dsh-architect`（checkDesign 六维度+五问覆盖评分 / checkDigest 需求准入六项覆盖 / renderReviewSkeleton 评审骨架）；`tool-architect` 工具入口（architect_digest/design/review） | 无 | 无套件依赖——纯函数、零持久化、零网络（无数据目录，§3.3 天然满足）；方案落定后的任务拆解由会话经既有 task_delegate 完成，不直连看板/账本；宿主 tools 缺席时工具静默跳过 | ✅ |
 
 ---
 
@@ -256,3 +255,4 @@ grep -rn "inject = \[" <plugin>/src | grep -E "dsh-(memory|twin|ledger|actors|re
 | v1.1 | 2026-09-05 | 审计响应闭环（F-01~F-07、G-01~G-04、R-01~R-04）：自锁事故记录与 opt-in 闸策略、知识定位入 §0、准入清单固化「改动仓测试全绿 + 工作区干净」 |
 | v1.2 | 2026-09-09 | 新成员 dsh-architect 准入（架构师 Agent 阶段 3 工具化）：提供覆盖检查服务与三个模型工具；纯函数零持久化、无套件依赖、输出键 ⊆ output schema 纪律以测试固化（24 用例全绿）；预设工具行条件装配（装了才有行，没装预设依然可用） |
 | v1.3 | 2026-09-09 | 术语统一：正文旧称谓更正为「主人」（与 §0「主人与访客」、master 语义一致；主人 2026-09-09 拍板，覆盖 §0/§2/§5 及 task-board-decisions.md） |
+| v1.4 | 2026-09-09 | dsh-architect 退出套件清单（主人拍板域归属修正）：架构师体系归 digital-architect 总仓（与多宿主 D9 同源决策），§2 v1.2 准入行整行撤销。协作形态不变——dsh-architect 仍零套件依赖、纯函数，经宿主 profile 加载，dsh-twin 按包名探测追加 tool-architect 行（与子仓挂靠哪个总仓无关）；dsh-yuyi 以 submodule 双总仓共享（digital-twin / digital-architect 各持独立指针） |
