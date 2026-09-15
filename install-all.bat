@@ -332,6 +332,10 @@ function upsertWorkspaceYaml(profileDir, managed) {
   }
   while (kept.length > 0 && kept[kept.length - 1].trim() === '') kept.pop()
   for (const [key, value] of Object.entries(managed)) {
+    if (value === null || typeof value !== 'object') {
+      kept.push(key + ': ' + String(value))
+      continue
+    }
     kept.push(key + ':')
     if (Array.isArray(value)) {
       for (const item of value) kept.push('  - ' + item)
@@ -350,10 +354,10 @@ if (RELEASE) {
     console.error('[install-all] host store has no @deepseek-ai/* packages — run dsh web once before installing the suite.')
     process.exit(1)
   }
-  upsertWorkspaceYaml(profileDir, { overrides, allowBuilds: BUILD_ALLOWED, onlyBuiltDependencies: Object.keys(BUILD_ALLOWED) })
+  upsertWorkspaceYaml(profileDir, { overrides, allowBuilds: BUILD_ALLOWED, onlyBuiltDependencies: Object.keys(BUILD_ALLOWED), blockExoticSubdeps: false })
   console.log(`[install-all] pinned ${count} host harness packages into pnpm-workspace.yaml overrides`)
 } else {
-  upsertWorkspaceYaml(profileDir, { allowBuilds: BUILD_ALLOWED, onlyBuiltDependencies: Object.keys(BUILD_ALLOWED) })
+  upsertWorkspaceYaml(profileDir, { allowBuilds: BUILD_ALLOWED, onlyBuiltDependencies: Object.keys(BUILD_ALLOWED), blockExoticSubdeps: false })
 }
 delete manifest.pnpm
 writeFileSync(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`)
