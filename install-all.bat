@@ -494,6 +494,27 @@ if (existsSync(stampPath)) {
   try { rmSync(stampPath); console.log('[install-all] removed digital-twin preset stamp (will re-materialize on next start).') }
   catch (e) { console.warn(`[install-all] could not remove preset stamp: ${e instanceof Error ? e.message : String(e)}`) }
 }
+// architect 预设同理：模板/物化器版本演进后强制重物化（dsh-architect materializeAt 幂等）。
+const architectStampPath = join(home, '.agent-presets', 'architect', '.materialized-version')
+if (existsSync(architectStampPath)) {
+  try { rmSync(architectStampPath); console.log('[install-all] removed architect preset stamp (will re-materialize on next start).') }
+  catch (e) { console.warn(`[install-all] could not remove architect preset stamp: ${e instanceof Error ? e.message : String(e)}`) }
+}
+
+// ==== 升级防复发审计：组合行包名 / 运行时 import / 预设漂移（scripts/check-compat.mjs）====
+// 2026-09-16 事故（dsh 0.1.6 移除 workflow-worker-thread → 预设模板旧行 → 整份组合
+// 挂载被拒）的常驻闸门：组合行引用解析链上不存在的包、构建产物 import 已消失的宿主
+// 包、预设模板与已物化副本漂移——任一存在都在安装期拦下，而非等 dsh 启动后失败。
+const compatCheck = spawnSync(process.execPath, [
+  join(REPO_ROOT, 'scripts', 'check-compat.mjs'),
+  '--repo', REPO_ROOT, '--home', home, '--profile', PROFILE,
+], { encoding: 'utf8' })
+if (compatCheck.stdout) console.log(compatCheck.stdout.trim())
+if (compatCheck.stderr) console.error(compatCheck.stderr.trim())
+if (compatCheck.status !== 0) {
+  console.error('[install-all] compat audit FAILED — fix the reported items before shipping (see above).')
+  process.exit(1)
+}
 
 // ==== 安装后校验：物化预设必须包含已装可选依赖的工具行 ====
 // 重物化发生在下次 dsh 启动；这里只做提示级校验，不阻塞安装。
