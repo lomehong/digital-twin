@@ -23,7 +23,7 @@
 
 ## 快速开始
 
-**前提**：先装好 [dsh-desktop](https://github.com/lomehong/dsh-desktop)（Tauri 桌面壳，承载 harness 与本套件的宿主进程），Node.js 与 pnpm 在 PATH。本仓库**不包含** dsh-desktop 源码——它单独维护，与本套件独立升级；安装脚本会自动定位桌面版 DSH_HOME（`%LOCALAPPDATA%\dsh-desktop-app-data\home`）。
+**前提**：先装好 [dsh-desktop](https://github.com/lomehong/dsh-desktop)（Tauri 桌面壳，承载 harness 与本套件的宿主进程），Node.js 与 pnpm 在 PATH。本仓库**不包含** dsh-desktop 源码——它单独维护，与本套件独立升级；安装脚本会自动定位桌面版 DSH_HOME（探测 `%LOCALAPPDATA%\dsh-desktop\home` 与旧版 `%LOCALAPPDATA%\dsh-desktop-app-data\home` 两种布局，可被 DSH_HOME 环境变量覆盖）。
 
 ### 方式 A：直接安装发布版（推荐，无需克隆源码、无需构建）
 

@@ -29,26 +29,35 @@ rem Behind a mandatory proxy: respect an existing HTTPS_PROXY. Node 24 needs
 rem NODE_USE_ENV_PROXY=1 for fetch to honour it (pnpm reads it natively).
 set "NODE_USE_ENV_PROXY=1"
 
-rem ==== locate Node.js: PATH first, then dsh desktop bundled runtime ====
+rem ==== locate DSH_HOME: env (GUI injects) first, then desktop app layouts, then ~/.dsh ====
+rem Layouts: newer releases use %LOCALAPPDATA%\dsh-desktop\home; legacy used
+rem %LOCALAPPDATA%\dsh-desktop-app-data\home. Keep probing both.
+if not defined DSH_HOME set "DSH_HOME=%LOCALAPPDATA%\dsh-desktop\home"
+if not exist "%DSH_HOME%" if exist "%LOCALAPPDATA%\dsh-desktop\home" set "DSH_HOME=%LOCALAPPDATA%\dsh-desktop\home"
+if not exist "%DSH_HOME%" if exist "%LOCALAPPDATA%\dsh-desktop-app-data\home" set "DSH_HOME=%LOCALAPPDATA%\dsh-desktop-app-data\home"
+if not defined DSH_HOME set "DSH_HOME=%USERPROFILE%\.dsh"
+
+rem ==== locate Node.js: PATH first, then the desktop runtime beside DSH_HOME, then known layouts ====
+rem <home>\..\node\node.exe is layout-agnostic (home and node are siblings in
+rem every layout). Real failure 2026-09-16: only the legacy app-data layout was
+rem probed, so fresh machines on the dsh-desktop layout failed with
+rem "Node.js not found" even though the portable runtime was installed.
 set "NODE_EXE=node"
 where node >nul 2>nul
-if %errorlevel% neq 0 (
-    if exist "%LOCALAPPDATA%\dsh-desktop-app-data\node\node.exe" (
-        set "NODE_EXE=%LOCALAPPDATA%\dsh-desktop-app-data\node\node.exe"
-    ) else (
-        echo [ERROR] Node.js not found. Install dsh desktop first, or add node.exe to PATH.
-        goto :fail
-    )
-)
-
-rem ==== locate DSH_HOME: desktop app dir first, then ~/.dsh ====
-if not defined DSH_HOME (
-    if exist "%LOCALAPPDATA%\dsh-desktop-app-data\home" (
-        set "DSH_HOME=%LOCALAPPDATA%\dsh-desktop-app-data\home"
-    ) else (
-        set "DSH_HOME=%USERPROFILE%\.dsh"
-    )
-)
+if %errorlevel% equ 0 goto :node-ok
+set "NODE_EXE=%DSH_HOME%\..\node\node.exe"
+if exist "%NODE_EXE%" goto :node-ok
+set "NODE_EXE=%LOCALAPPDATA%\dsh-desktop\node\node.exe"
+if exist "%NODE_EXE%" goto :node-ok
+set "NODE_EXE=%LOCALAPPDATA%\dsh-desktop-app-data\node\node.exe"
+if exist "%NODE_EXE%" goto :node-ok
+echo [ERROR] Node.js not found. Install dsh desktop first, or add node.exe to PATH.
+goto :fail
+:node-ok
+rem Portable runtime tools (corepack/pnpm fallback, npm.cmd) are not on PATH
+rem either on machines without a system Node - prepend the runtime dir for
+rem this script so locatePnpm/corepack in the embedded JS can resolve.
+for %%D in ("%NODE_EXE%") do set "PATH=%%~dpD;%PATH%"
 
 echo ==================================================
 echo   DSH local plugin installer
@@ -137,9 +146,14 @@ const REPO_ROOT = resolve(process.argv[2] ?? process.cwd())
 /** -Release：最终用户模式，依赖直指 GitHub Release tarball，而非本地 link: 目录。 */
 const RELEASE = process.argv.slice(3).some((a) => a === '-Release' || a === '--release')
 const PROFILE = process.env.DSH_PROFILE ?? 'web'
-const desktopHome = join(process.env.LOCALAPPDATA ?? '', 'dsh-desktop-app-data', 'home')
+// Desktop home layouts: newer releases use dsh-desktop\home, legacy used
+// dsh-desktop-app-data\home. Probe both before falling back to ~/.dsh.
+const desktopHomes = [
+  join(process.env.LOCALAPPDATA ?? '', 'dsh-desktop', 'home'),
+  join(process.env.LOCALAPPDATA ?? '', 'dsh-desktop-app-data', 'home'),
+]
 const home = process.env.DSH_HOME
-  ?? (existsSync(desktopHome) ? desktopHome : join(process.env.USERPROFILE ?? process.env.HOME ?? '.', '.dsh'))
+  ?? (desktopHomes.find((p) => existsSync(p)) ?? join(process.env.USERPROFILE ?? process.env.HOME ?? '.', '.dsh'))
 const profileDir = join(home, 'profiles', PROFILE)
 
 /** dir = local dir; bundle = register as profile layer; sub = subpackage path. */
