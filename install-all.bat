@@ -143,7 +143,7 @@ exit /b 1
  * Env: DSH_HOME (dsh home dir), DSH_PROFILE (default: web)
  */
 import { spawnSync } from 'node:child_process'
-import { existsSync, readFileSync, writeFileSync, appendFileSync, rmSync, lstatSync, mkdirSync, readdirSync } from 'node:fs'
+import { existsSync, readFileSync, writeFileSync, appendFileSync, rmSync, lstatSync, mkdirSync, readdirSync, statSync } from 'node:fs'
 import { join, resolve, dirname } from 'node:path'
 
 const REPO_ROOT = resolve(process.argv[2] ?? process.cwd())
@@ -569,19 +569,95 @@ if (existsSync(architectStampPath)) {
   catch (e) { console.warn(`[install-all] could not remove architect preset stamp: ${e instanceof Error ? e.message : String(e)}`) }
 }
 
-// ==== 升级防复发审计：组合行包名 / 运行时 import / 预设漂移（scripts/check-compat.mjs）====
-// 2026-09-16 事故（dsh 0.1.6 移除 workflow-worker-thread → 预设模板旧行 → 整份组合
-// 挂载被拒）的常驻闸门：组合行引用解析链上不存在的包、构建产物 import 已消失的宿主
-// 包、预设模板与已物化副本漂移——任一存在都在安装期拦下，而非等 dsh 启动后失败。
-const compatCheck = spawnSync(process.execPath, [
-  join(REPO_ROOT, 'scripts', 'check-compat.mjs'),
-  '--repo', REPO_ROOT, '--home', home, '--profile', PROFILE,
-], { encoding: 'utf8' })
-if (compatCheck.stdout) console.log(compatCheck.stdout.trim())
-if (compatCheck.stderr) console.error(compatCheck.stderr.trim())
-if (compatCheck.status !== 0) {
-  console.error('[install-all] compat audit FAILED — fix the reported items before shipping (see above).')
-  process.exit(1)
+// ==== 升级防复发审计（自包含版；2026-09-16 事故的常驻闸门）=====================
+// 生产通道只分发本文件（无 scripts/ 目录），此前引用仓库脚本在生产机器上
+// MODULE_NOT_FOUND 误杀整个安装——审计必须自包含。检查已安装到 profile 的
+// 套件包（tarball 里也会带坏行/坏 import，正是 2026-09-16 的实际情况）：
+//   ① cordis.patch.yml / presets/**/*.cordis.yml 行 name 引用的包在解析链上存在
+//      （workflow-worker-thread 事故类：tarball 携带坏行 → 整份组合挂载被拒）；
+//   ② lib/**（排除 client 产物）对 @deepseek-ai/* 的运行时 import 在宿主镜像
+//      可解析（model-failover/plugin-manager 死 import 事故类）。
+// 完整版（含预设漂移检测与模板比对）在套件仓 scripts/check-compat.mjs，本地通道使用。
+{
+  const mirrorAudit = join(home, 'profiles', 'node_modules')
+  const profileNm = join(profileDir, 'node_modules')
+  const auditErrors = []
+  const auditRows = (file, label) => {
+    let text = ''
+    try { text = readFileSync(file, 'utf8') } catch { return }
+    const re = /^\s*(?:-\s+)?name:\s*['"]?([^'"\n]+?)['"]?\s*$/gm
+    let m
+    while ((m = re.exec(text)) !== null) {
+      const name = m[1].trim()
+      if (name === 'cordis:group') continue
+      const segs = name.split('/')
+      const pkgName = segs[0].startsWith('@') ? segs.slice(0, 2).join('/') : segs[0]
+      const resolvable = [profileNm, mirrorAudit].some((root) => existsSync(join(root, pkgName, 'package.json')))
+      if (!resolvable) {
+        auditErrors.push(`${label}: 行 name: '${name}' 在解析链上不存在——该行会让整份组合拒绝挂载（发布 tarball 前先修模板）`)
+      }
+    }
+  }
+  const isClientArtifactAudit = (file, libDir) => {
+    const f = file.toLowerCase()
+    return f === join(libDir, 'client.js').toLowerCase() || f.startsWith(join(libDir, 'client').toLowerCase() + '\\')
+  }
+  const auditImports = (pkgDir, label) => {
+    const libDir = join(pkgDir, 'lib')
+    if (!existsSync(libDir)) return
+    const ownNm = join(pkgDir, 'node_modules')
+    const walk = (dir) => {
+      let entries
+      try { entries = readdirSync(dir) } catch { return }
+      for (const entry of entries) {
+        if (entry.endsWith('.map') || entry.endsWith('.d.ts')) continue
+        const full = join(dir, entry)
+        let st
+        try { st = statSync(full) } catch { continue }
+        if (st.isDirectory()) { walk(full); continue }
+        if (!entry.endsWith('.js') || isClientArtifactAudit(full, libDir)) continue
+        const text = readFileSync(full, 'utf8')
+        for (const re of [/from\s+['"](@deepseek-ai\/[a-z0-9-]+)[^'"]*['"]/g, /import\(\s*['"](@deepseek-ai\/[a-z0-9-]+)[^'"]*['"]\s*\)/g, /require\(\s*['"](@deepseek-ai\/[a-z0-9-]+)[^'"]*['"]\s*\)/g]) {
+          re.lastIndex = 0
+          let m
+          while ((m = re.exec(text)) !== null) {
+            const pkgName = m[1]
+            const ok = [ownNm, profileNm, mirrorAudit].some((root) => existsSync(join(root, pkgName, 'package.json')))
+            if (!ok) auditErrors.push(`${label}: 运行时 import '${pkgName}' 不存在于宿主镜像/解析链——启动即 ERR_MODULE_NOT_FOUND`)
+          }
+        }
+      }
+    }
+    walk(libDir)
+  }
+  for (const { pkg } of PLUGINS) {
+    const dir = join(profileNm, ...pkg.split('/'))
+    if (!existsSync(join(dir, 'package.json'))) continue
+    const patch = join(dir, 'cordis.patch.yml')
+    if (existsSync(patch)) auditRows(patch, `组合 ${pkg}`)
+    const presetsDir = join(dir, 'presets')
+    if (existsSync(presetsDir)) {
+      const walkPresets = (d, depth) => {
+        let entries
+        try { entries = readdirSync(d) } catch { return }
+        for (const entry of entries) {
+          const full = join(d, entry)
+          let st
+          try { st = statSync(full) } catch { continue }
+          if (st.isDirectory() && depth < 2) walkPresets(full, depth + 1)
+          else if (entry.endsWith('.cordis.yml')) auditRows(full, `预设 ${pkg}`)
+        }
+      }
+      walkPresets(presetsDir, 0)
+    }
+    auditImports(dir, `运行时 ${pkg}`)
+  }
+  if (auditErrors.length > 0) {
+    for (const e of auditErrors) console.error(`[ERROR] ${e}`)
+    console.error('[install-all] compat audit FAILED — 已安装套件存在升级不兼容项（上方逐条列出）。')
+    process.exit(1)
+  }
+  console.log('[install-all] compat audit OK——已安装套件的组合行与运行时 import 全部可解析。')
 }
 
 // ==== 安装后校验：物化预设必须包含已装可选依赖的工具行 ====
