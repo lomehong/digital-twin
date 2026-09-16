@@ -158,6 +158,37 @@ const desktopHomes = [
 ]
 const home = process.env.DSH_HOME
   ?? (desktopHomes.find((p) => existsSync(p)) ?? join(process.env.USERPROFILE ?? process.env.HOME ?? '.', '.dsh'))
+
+// ==== Windows system proxy -> HTTP(S)_PROXY (real failure 2026-09-16, fresh machine) ====
+// The GitHub release probes may succeed via the PowerShell fallback (which reads
+// the WinINET proxy) while pnpm - which cannot read WinINET - fails
+// "error sending request for url https://github.com/...". Export it best-effort;
+// an explicitly set HTTPS_PROXY/HTTP_PROXY always wins.
+if (process.platform === 'win32' && !process.env.HTTPS_PROXY && !process.env.HTTP_PROXY) {
+  try {
+    const queryReg = (value) => {
+      const r = spawnSync('reg', ['query', 'HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Internet Settings', '/v', value], { encoding: 'utf8' })
+      return r.status === 0 ? String(r.stdout) : ''
+    }
+    const proxyEnabled = /0x1/.test(queryReg('ProxyEnable'))
+    const matched = queryReg('ProxyServer').match(/ProxyServer\s+REG_SZ\s+(\S+)/)
+    if (proxyEnabled && matched) {
+      let server = matched[1]
+      if (server.includes(';')) {
+        const parts = server.split(';').map((s) => s.trim())
+        const httpsPart = parts.find((s) => s.toLowerCase().startsWith('https='))
+        const httpPart = parts.find((s) => s.toLowerCase().startsWith('http='))
+        server = ((httpsPart ?? httpPart ?? '').split('=')[1]) ?? ''
+      }
+      if (server) {
+        if (!/^https?:\/\//i.test(server)) server = `http://${server}`
+        process.env.HTTPS_PROXY = server
+        process.env.HTTP_PROXY = server
+        console.log(`[install-all] system proxy detected -> HTTPS_PROXY/HTTP_PROXY=${server}`)
+      }
+    }
+  } catch { /* best effort: no proxy env means direct connection, as before */ }
+}
 const profileDir = join(home, 'profiles', PROFILE)
 
 /** dir = local dir; bundle = register as profile layer; sub = subpackage path. */
@@ -497,8 +528,27 @@ if (!RELEASE) {
 }
 
 const EXPECTED = RELEASE ? PLUGINS.filter(({ pkg }) => AVAILABLE.has(pkg)) : PLUGINS
-const allLinked = EXPECTED.every(({ pkg }) => existsSync(join(profileDir, 'node_modules', ...pkg.split('/'), 'package.json')))
-if (result.status !== 0 || !allLinked) {
+const linksOk = () => EXPECTED.every(({ pkg }) => existsSync(join(profileDir, 'node_modules', ...pkg.split('/'), 'package.json')))
+let installOk = result.status === 0 && linksOk()
+// GitHub 直连失败兜底（真实故障 2026-09-16 新机）：release 探针成功但 pnpm 拉
+// github.com Release tarball 报 error sending request——清单 URL 切 ghfast 镜像重试一次。
+// 仅生产通道（link: 通道没有远程下载）。
+if (RELEASE && !installOk) {
+  const manifest2 = JSON.parse(readFileSync(manifestPath, 'utf8'))
+  const githubDeps = Object.entries(manifest2.dependencies ?? {})
+    .filter(([, v]) => String(v).startsWith('https://github.com/'))
+  if (githubDeps.length > 0) {
+    for (const [k, v] of githubDeps) {
+      manifest2.dependencies[k] = String(v).replace('https://github.com/', 'https://ghfast.top/https://github.com/')
+    }
+    writeFileSync(manifestPath, `${JSON.stringify(manifest2, null, 2)}\n`)
+    console.log('[install-all] GitHub 直连失败：Release URL 已切 ghfast 镜像，重试 pnpm install …')
+    const retry = spawnSync(pnpm.cmd, [...pnpm.args, 'install'], { cwd: profileDir, stdio: 'inherit', shell: process.platform === 'win32' })
+    installOk = retry.status === 0 && linksOk()
+    if (installOk) console.log('[install-all] 镜像重试成功。')
+  }
+}
+if (!installOk) {
   console.error('[install-all] install failed, see output above.')
   process.exit(1)
 }
