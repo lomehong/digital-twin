@@ -43,8 +43,12 @@ rem every layout). Real failure 2026-09-16: only the legacy app-data layout was
 rem probed, so fresh machines on the dsh-desktop layout failed with
 rem "Node.js not found" even though the portable runtime was installed.
 set "NODE_EXE=node"
+rem Shell v0.1.51+ injects the authoritative portable node (DSH_NODE_EXE):
+rem it always wins when present, regardless of how old this installer copy is.
+if defined DSH_NODE_EXE if exist "%DSH_NODE_EXE%" set "NODE_EXE=%DSH_NODE_EXE%"
 where node >nul 2>nul
 if %errorlevel% equ 0 goto :node-ok
+if exist "%NODE_EXE%" goto :node-ok
 set "NODE_EXE=%DSH_HOME%\..\node\node.exe"
 if exist "%NODE_EXE%" goto :node-ok
 set "NODE_EXE=%LOCALAPPDATA%\dsh-desktop\node\node.exe"
