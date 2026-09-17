@@ -12,3 +12,6 @@ scripts/backup-*/
 dsh-plugin-manager/
 dsh-remote/
 .zcode/
+
+# 分身运行时抓取缓存（会话工作产物，不入库）
+.tmp-fetch/

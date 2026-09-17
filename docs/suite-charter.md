@@ -98,6 +98,13 @@
 
 - 委托账本（L0-L3）是**可选治理层**：在场时按账本裁决；缺席时插件必须按预定义的本地策略收敛（保守侧），并将"治理降级"显式告知用户。治理缺席**不得**成为核心功能不可用的理由（见 §5-01）。
 
+### 3.6 打包、发布与挂载（2026-09-15 增，三条实证教训）
+
+- **宿主包运行时值导入一律声明进 `dependencies`**：`@deepseek-ai/*` 宿主包在宿主自愈重装 profile 依赖时 peer 物化不稳定，仅 peer 声明会轮番导致「Cannot find package」加载失败（实证：dsh-computer/dsh-redact/dsh-yuyi，v0.1.1 批次整改）。
+- **桌面 Release 直装**：桌面版 profile 依赖指向各仓 `releases/latest/download/*.tgz`——套件改动必须打 tag 发版（CI 自动构建发布）才能到达桌面端；本地 commit 不发版=桌面不更新。
+- **per-agent 宿主服务只能在 agent 挂载点注入**：`systemPrompt` 等宿主服务按 agent 实例化，bundle app 层 ctx 的 `ctx.inject(['systemPrompt'],...)` 永不触发（实证：记忆按轮装配段注册回执 0 条，静默哑火）。per-agent 能力一律挂 preset 行模块（agent 挂载点，`inject` 声明双服务），并在静默路径上落可观测追踪。
+- **插件自带服务的 profile 注册禁用相对链接**：桥等 preset 行模块的 profile 依赖用绝对 `file:` 路径或 release URL——宿主自愈清空重装不重建 profile 内相对 junction（实证：dsh-browser 桥丢失致扩展断连）。
+
 ---
 
 ## §4 既有先例（合规范本）
@@ -256,3 +263,4 @@ grep -rn "inject = \[" <plugin>/src | grep -E "dsh-(memory|twin|ledger|actors|re
 | v1.2 | 2026-09-09 | 新成员 dsh-architect 准入（架构师 Agent 阶段 3 工具化）：提供覆盖检查服务与三个模型工具；纯函数零持久化、无套件依赖、输出键 ⊆ output schema 纪律以测试固化（24 用例全绿）；预设工具行条件装配（装了才有行，没装预设依然可用） |
 | v1.3 | 2026-09-09 | 术语统一：正文旧称谓更正为「主人」（与 §0「主人与访客」、master 语义一致；主人 2026-09-09 拍板，覆盖 §0/§2/§5 及 task-board-decisions.md） |
 | v1.4 | 2026-09-09 | dsh-architect 退出套件清单（主人拍板域归属修正）：架构师体系归 digital-architect 总仓（与多宿主 D9 同源决策），§2 v1.2 准入行整行撤销。协作形态不变——dsh-architect 仍零套件依赖、纯函数，经宿主 profile 加载，dsh-twin 按包名探测追加 tool-architect 行（与子仓挂靠哪个总仓无关）；dsh-yuyi 以 submodule 双总仓共享（digital-twin / digital-architect 各持独立指针） |
+| v1.5 | 2026-09-15 | 新增 §3.6 打包、发布与挂载细则（宿主包落 dependencies / 桌面 Release 直装需发版 / per-agent 服务禁 app 层注入 / profile 注册禁相对 junction，四条均为当日实证教训）；记忆按轮装配自洽根治五连修（dsh-memory v0.2.1→v0.2.5：挂载点迁移、身份自愈、自愈先行、检索取头部）+ mount-trace.log 可观测追踪；运行时 0.1.5-alpha.2 / rc.1 / 0.1.6-alpha.1 三代兼容验证零适配；7 仓批量发版对齐桌面 Release 直装 |
