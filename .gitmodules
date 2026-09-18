@@ -16,9 +16,6 @@
 [submodule "dsh-im-bot"]
 	path = dsh-im-bot
 	url = https://github.com/lomehong/dsh-im-bot.git
-[submodule "dsh-computer"]
-	path = dsh-computer
-	url = https://github.com/lomehong/dsh-computer.git
 [submodule "dsh-redact"]
 	path = dsh-redact
 	url = https://github.com/lomehong/dsh-redact.git

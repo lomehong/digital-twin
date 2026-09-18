@@ -2,7 +2,7 @@
 rem 全量测试：跑数字分身套件全部插件的测试套件
 setlocal
 set FAILED=
-for %%d in (dsh-actors dsh-computer dsh-im-bot\im-channel dsh-im-bot\ui-settings-im dsh-ledger dsh-memory dsh-redact dsh-regression dsh-task-board dsh-twin dsh-yuyi) do (
+for %%d in (dsh-actors dsh-im-bot\im-channel dsh-im-bot\ui-settings-im dsh-ledger dsh-memory dsh-redact dsh-regression dsh-task-board dsh-twin dsh-yuyi) do (
     echo [test-all] %%d ...
     pushd %%d
     call npm test || set FAILED=%%d

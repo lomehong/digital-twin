@@ -65,7 +65,7 @@ for %%D in ("%NODE_EXE%") do set "PATH=%%~dpD;%PATH%"
 
 echo ==================================================
 echo   DSH local plugin installer
-echo   actors / computer / im-bot / ledger / memory /
+echo   actors / im-bot / ledger / memory /
 echo   redact / regression / twin / yuyi
 echo   target profile: %DSH_HOME%\profiles\web
 echo ==================================================
@@ -138,7 +138,7 @@ exit /b 1
  * junctions pnpm 9 creates for cross-drive absolute link: specifiers on
  * Windows, and removes the digital-twin preset version stamp so the next
  * dsh start re-materializes the preset with the freshly installed optional
- * tool rows (tool-memory / tool-yuyi / tool-computer).
+ * tool rows (tool-memory / tool-yuyi).
  *
  * Env: DSH_HOME (dsh home dir), DSH_PROFILE (default: web)
  */
@@ -194,7 +194,6 @@ const profileDir = join(home, 'profiles', PROFILE)
 /** dir = local dir; bundle = register as profile layer; sub = subpackage path. */
 const PLUGINS = [
   { dir: 'dsh-actors',     pkg: '@dsh-extra/dsh-actors',     bundle: true },
-  { dir: 'dsh-computer',   pkg: '@dsh-extra/dsh-computer',   bundle: true },
   { dir: 'dsh-im-bot',     pkg: '@dsh-extra/im-channel',     bundle: true, sub: 'im-channel' },
   { dir: 'dsh-im-bot',     pkg: '@dsh-extra/dsh-client-ui-settings-im', bundle: true, sub: 'ui-settings-im' },
   { dir: 'dsh-ledger',     pkg: '@dsh-extra/dsh-ledger',     bundle: true },
@@ -555,7 +554,7 @@ if (!installOk) {
 
 // ==== 让数字分身预设按新安装状态重物化 ====
 // materializePreset 只在版本戳与 PRESET_VERSION 不一致时重写；本轮若只是
-// 新装了可选依赖（如 dsh-computer），版本戳不变就不会追加 tool-* 行——
+// 新装了可选依赖（如 dsh-yuyi），版本戳不变就不会追加 tool-* 行——
 // 「装了却不生效」。删掉戳，下次 dsh 启动 dsh-twin apply 时必然重物化。
 const stampPath = join(home, '.agent-presets', 'digital-twin', '.materialized-version')
 if (existsSync(stampPath)) {
@@ -668,7 +667,6 @@ if (existsSync(presetYml)) {
   const missing = [
     ['@dsh-extra/dsh-memory', 'tool-memory'],
     ['dsh-yuyi', 'tool-yuyi'],
-    ['@dsh-extra/dsh-computer', 'tool-computer'],
   ]
     .filter(([pkgName]) => manifest.dsh.profile.bundles.includes(pkgName))
     .filter(([, rowId]) => !yml.includes(`- id: ${rowId}`))

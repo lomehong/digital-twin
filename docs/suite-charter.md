@@ -43,7 +43,7 @@
 
 **跨插件协作的唯一合法形态**：**可选增强**——消费方经 cordis 惰性解析（`ctx.get`）或同源 HTTP 探测兄弟能力；在场则增强，缺席则按预定义降级路径工作。允许的两种签名：
 1. 服务惰性解析：`ctx.get('<sibling-service>')` 返回 `undefined` ⇒ 走降级分支（参考：dsh-task-board 对 dsh-ledger 的懒解析、dsh-twin 对 im-channel 的能力探测）。
-2. 预设/能力条件装配：检测到兄弟包已安装才追加配置行（参考：dsh-twin 物化预设时对 tool-memory/tool-yuyi/tool-computer 的探测追加——"装了才有行，没装预设依然可用"）。
+2. 预设/能力条件装配：检测到兄弟包已安装才追加配置行（参考：dsh-twin 物化预设时对 tool-memory/tool-yuyi 的探测追加——"装了才有行，没装预设依然可用"）。
 
 ---
 
@@ -61,7 +61,6 @@
 | **dsh-actors**（实体注册表） | `dsh-actors` | webServer（可选） | dsh-memory（关系档案聚合）→ 缺席则仅注册表视图 | ✅ |
 | **dsh-ledger**（委托账本） | `dsh-ledger`；`tools/pre-execute` 治理钩子 | webServer | dsh-twin（否决回流学习）→ 可选 | ✅ |
 | **dsh-regression**（回归/影子） | `dsh-regression` | webServer | — | ✅（HostRunner 待接入） |
-| **dsh-computer**（电脑操作） | `computer` | settings | — | ✅ |
 | **dsh-redact**（出站脱敏） | `redact`（llm/stream 钩子）+ `masking`（已提供，im-channel 出站脱敏消费） | settings、llm | — | ✅ |
 | **im-channel**（IM 渠道，dsh-im-bot） | `im-channel`（pushToUser / botsStatus / reload） | agents、agentPresets、approval/question、workspaceRegistry | dsh-memory（共享记忆挂载 + 按回合装配开关）→ 缺席则渠道会话按各自隔离；dsh-twin.noteActor（身份标注）→ 可选；`masking`（出站脱敏，dsh-redact 提供）→ 缺席首次 WARN 显式降级（原登记 #03 已销账） | ✅ |
 | **ui-settings-im**（IM 设置界面） | settings.plugins.tab + shell.overlay | runtime、locale、slots | — | ✅ |
@@ -247,7 +246,7 @@
 grep -rn "from '@dsh-extra/" <plugin>/src --include="*.ts" --include="*.tsx" \
   | grep -v "import type"   # import type 允许（构建期擦除）
 # cordis inject 不得声明套件服务名：
-grep -rn "inject = \[" <plugin>/src | grep -E "dsh-(memory|twin|ledger|actors|regression|task-board|yuyi|computer|redact|im-channel)"
+grep -rn "inject = \[" <plugin>/src | grep -E "dsh-(memory|twin|ledger|actors|regression|task-board|yuyi|redact|im-channel)"
 ```
 
 **例外流程**：确需超出可选增强的深度协作时，须在本宪章 §5 登记例外 + 双方 README 声明 + 给出缺席降级路径，经套件维护者同意后方可实施；默认答复为"改为可选增强"。
@@ -264,3 +263,4 @@ grep -rn "inject = \[" <plugin>/src | grep -E "dsh-(memory|twin|ledger|actors|re
 | v1.3 | 2026-09-09 | 术语统一：正文旧称谓更正为「主人」（与 §0「主人与访客」、master 语义一致；主人 2026-09-09 拍板，覆盖 §0/§2/§5 及 task-board-decisions.md） |
 | v1.4 | 2026-09-09 | dsh-architect 退出套件清单（主人拍板域归属修正）：架构师体系归 digital-architect 总仓（与多宿主 D9 同源决策），§2 v1.2 准入行整行撤销。协作形态不变——dsh-architect 仍零套件依赖、纯函数，经宿主 profile 加载，dsh-twin 按包名探测追加 tool-architect 行（与子仓挂靠哪个总仓无关）；dsh-yuyi 以 submodule 双总仓共享（digital-twin / digital-architect 各持独立指针） |
 | v1.5 | 2026-09-15 | 新增 §3.6 打包、发布与挂载细则（宿主包落 dependencies / 桌面 Release 直装需发版 / per-agent 服务禁 app 层注入 / profile 注册禁相对 junction，四条均为当日实证教训）；记忆按轮装配自洽根治五连修（dsh-memory v0.2.1→v0.2.5：挂载点迁移、身份自愈、自愈先行、检索取头部）+ mount-trace.log 可观测追踪；运行时 0.1.5-alpha.2 / rc.1 / 0.1.6-alpha.1 三代兼容验证零适配；7 仓批量发版对齐桌面 Release 直装 |
+| v1.6 | 2026-09-18 | 成员变更：dsh-computer 退出套件清单（主人拍板：dsh 官方已提供电脑操作插件，套件自有实现冗余）。§2 成员行撤销，总仓库子模块移除，install/build/test 清单同步；check-compat 的 allowExtras 与 dsh-twin 物化器的 tool-computer 探测逻辑保留作存量兼容（包不在即不追加/白名单只宽容不新增，重物化后悬空行自然消失） |

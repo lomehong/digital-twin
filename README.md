@@ -1,7 +1,7 @@
 # digital-twin · 数字分身套件
 
 基于 [DeepSeek Harness（dsh）](https://github.com/lomehong) 的数字分身完整插件套件。
-本仓库是**总仓库（meta-repo）**：用 git submodule 组织组成数字分身的 10 个独立插件仓库，
+本仓库是**总仓库（meta-repo）**：用 git submodule 组织组成数字分身的 9 个独立插件仓库，
 并附带一键安装与全量构建/测试脚本。
 
 ## 套件组成
@@ -14,12 +14,12 @@
 | [dsh-regression](https://github.com/lomehong/dsh-regression) | `@dsh-extra/dsh-regression` | 回归与影子测试：scripted 场景回归、盲测对统计（分辨不出率） |
 | [dsh-actors](https://github.com/lomehong/dsh-actors) | `@dsh-extra/dsh-actors` | 实体注册表：master/colleague/customer/stranger/blocked，新建一律 stranger 不推断身份 |
 | [dsh-im-bot](https://github.com/lomehong/dsh-im-bot) | `@dsh-extra/im-channel`、`@dsh-extra/dsh-client-ui-settings-im` | IM 渠道（企微/微信/飞书）+ 渠道设置界面 |
-| [dsh-computer](https://github.com/lomehong/dsh-computer) | `@dsh-extra/dsh-computer` | 电脑操作：截图/鼠标/键盘/窗口/剪贴板 |
 | [dsh-redact](https://github.com/lomehong/dsh-redact) | `@dsh-extra/dsh-redact` | 出站脱敏：分身对外产出先脱敏再放行 |
 | [dsh-yuyi](https://github.com/lomehong/dsh-yuyi) | `dsh-yuyi` | 御驿通信：跨 Agent 寻址、收件箱、任务协作 |
 | [dsh-task-board](https://github.com/lomehong/dsh-task-board) | `@dsh-extra/dsh-task-board` | 任务看板：Host 权威账本、cron 调度、真实分身会话执行、账本裁决闭环（实施中） |
 
 生态工具（不在本套件内，各自独立）：[dsh-plugin-manager](https://github.com/lomehong/dsh-plugin-manager)（插件管理与侧载）、[dsh-remote](https://github.com/lomehong/dsh-remote)（远程访问）。
+电脑操作（截图/鼠标/键盘/窗口/剪贴板）由 dsh 官方插件提供，套件自有实现 dsh-computer 已于 2026-09-18 移除。
 
 ## 快速开始
 
@@ -49,13 +49,13 @@ dsh plugin --profile web add https://github.com/lomehong/dsh-twin/releases/lates
 ```bat
 git clone --recurse-submodules https://github.com/lomehong/digital-twin.git
 cd digital-twin
-install-all.bat        :: 一键把 10 个插件仓库（共 11 个包，im-bot 含 2 个）以 link: 模式装进 dsh web profile
+install-all.bat        :: 一键把 9 个插件仓库（共 10 个包，im-bot 含 2 个）以 link: 模式装进 dsh web profile
 ```
 
 `install-all.bat` 会自动定位 Node.js 与 DSH_HOME（桌面版优先）、按 package.json
 校验每个插件的构建产物、注册 profile bundle 层、修复 pnpm 9 跨盘 link: 的
 junction 问题，并移除数字分身预设版本戳以触发下次启动重物化（挂上
-tool-memory / tool-yuyi / tool-computer 工具行）。装完重启 dsh 即生效。
+tool-memory / tool-yuyi 工具行）。装完重启 dsh 即生效。
 
 ## 全量构建与测试
 
