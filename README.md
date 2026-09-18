@@ -20,6 +20,7 @@
 
 生态工具（不在本套件内，各自独立）：[dsh-plugin-manager](https://github.com/lomehong/dsh-plugin-manager)（插件管理与侧载）、[dsh-remote](https://github.com/lomehong/dsh-remote)（远程访问）。
 电脑操作（截图/鼠标/键盘/窗口/剪贴板）由 dsh 官方插件提供，套件自有实现 dsh-computer 已于 2026-09-18 移除。
+全部插件的配置入口统一在 dsh 左侧「插件」管理页的各插件详情页（`plugins.bundle.config`）：有配置的插件提供表单，无配置的提供只读状态速览。
 
 ## 快速开始
 

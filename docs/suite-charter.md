@@ -56,14 +56,14 @@
 |---|---|---|---|---|
 | **dsh-twin**（分身核心） | `dsh-twin`（noteActor / seedMemory / enqueueLearning 等） | agentPresets、systemPrompt、settings、sessions、webServer、timer | dsh-memory（知识种子/记忆整合）→ 缺席则种子不落库；dsh-ledger（主动汇报闸）→ 缺席则跳过闸门；im-channel（转人工/主动投递）→ 缺席则报错文案+能力收窄；dsh-task-board（activity() 活动视图，活动区段唯一数据源）→ 缺席则活动区段整体降级为空；dsh-actors / dsh-regression（关系档案/影子数据）→ HTTP 探测，缺席则卡片空态 | ✅ 人格注入与管理 UI 完整；增强项按上降级 |
 | **dsh-memory**（共享记忆） | `dsh-memory`（早加载，见 §4 注） | webServer（可选） | im-channel（渠道身份挂载）→ 缺席则预设工具行以 master 视角工作；dsh-actors（别名归一）→ 规划中，缺席则按原始 userId 过滤 | ✅ |
-| **dsh-task-board**（任务看板 = 唯一活动权威） | web 路由 + 客户端看板 + 模型工具（tools 入口：`task_report` 上报 / `task_delegate` 对话内下单）+ `dsh-task-board` 服务（`state()` 状态 / `activity()` 活动视图，tick 每 15s 刷新） | webServer、session APIs、agentPresets、typertGateway | dsh-ledger（L0-L3 治理裁决）→ 缺席走本地降级（L0/L1 放行标注、L2 拦截、L3 拒绝，§5-01 已销账）；dsh-memory（任务结果沉淀为「已验证结果」记忆）→ 缺席则仅看板+账本留痕；im-channel（L2 降级通知主人）→ 缺席跳过通知 | ✅ |
+| **dsh-task-board**（任务看板 = 唯一活动权威） | web 路由 + 客户端看板与插件页配置区（只读速览）+ 模型工具（tools 入口：`task_report` 上报 / `task_delegate` 对话内下单）+ `dsh-task-board` 服务（`state()` 状态 / `activity()` 活动视图，tick 每 15s 刷新） | webServer、session APIs、agentPresets、typertGateway | dsh-ledger（L0-L3 治理裁决）→ 缺席走本地降级（L0/L1 放行标注、L2 拦截、L3 拒绝，§5-01 已销账）；dsh-memory（任务结果沉淀为「已验证结果」记忆）→ 缺席则仅看板+账本留痕；im-channel（L2 降级通知主人）→ 缺席跳过通知 | ✅ |
 | **dsh-yuyi**（御驿通信） | `yuyi` + `yuyi_*` 工具 | agents、settings | 无套件依赖 | ✅（套件零耦合标杆） |
-| **dsh-actors**（实体注册表） | `dsh-actors` | webServer（可选） | dsh-memory（关系档案聚合）→ 缺席则仅注册表视图 | ✅ |
-| **dsh-ledger**（委托账本） | `dsh-ledger`；`tools/pre-execute` 治理钩子 | webServer | dsh-twin（否决回流学习）→ 可选 | ✅ |
-| **dsh-regression**（回归/影子） | `dsh-regression` | webServer | — | ✅（HostRunner 待接入） |
+| **dsh-actors**（实体注册表） | `dsh-actors`；client 配置区（角色分布速览） | webServer（可选） | dsh-memory（关系档案聚合）→ 缺席则仅注册表视图 | ✅ |
+| **dsh-ledger**（委托账本） | `dsh-ledger`；`tools/pre-execute` 治理钩子；client 配置区（账本速览/执行闸健康） | webServer | dsh-twin（否决回流学习）→ 可选 | ✅ |
+| **dsh-regression**（回归/影子） | `dsh-regression`；client 配置区（人格 CI 速览） | webServer | — | ✅（HostRunner 待接入） |
 | **dsh-redact**（出站脱敏） | `redact`（llm/stream 钩子）+ `masking`（已提供，im-channel 出站脱敏消费） | settings、llm | — | ✅ |
 | **im-channel**（IM 渠道，dsh-im-bot） | `im-channel`（pushToUser / botsStatus / reload） | agents、agentPresets、approval/question、workspaceRegistry | dsh-memory（共享记忆挂载 + 按回合装配开关）→ 缺席则渠道会话按各自隔离；dsh-twin.noteActor（身份标注）→ 可选；`masking`（出站脱敏，dsh-redact 提供）→ 缺席首次 WARN 显式降级（原登记 #03 已销账） | ✅ |
-| **ui-settings-im**（IM 设置界面） | settings.plugins.tab + shell.overlay | runtime、locale、slots | — | ✅ |
+| **ui-settings-im**（IM 设置界面） | plugins.bundle.config（im-channel 详情页「手机连接」配置区）+ shell.overlay | runtime、locale、slots | — | ✅ |
 
 ---
 
@@ -264,3 +264,4 @@ grep -rn "inject = \[" <plugin>/src | grep -E "dsh-(memory|twin|ledger|actors|re
 | v1.4 | 2026-09-09 | dsh-architect 退出套件清单（主人拍板域归属修正）：架构师体系归 digital-architect 总仓（与多宿主 D9 同源决策），§2 v1.2 准入行整行撤销。协作形态不变——dsh-architect 仍零套件依赖、纯函数，经宿主 profile 加载，dsh-twin 按包名探测追加 tool-architect 行（与子仓挂靠哪个总仓无关）；dsh-yuyi 以 submodule 双总仓共享（digital-twin / digital-architect 各持独立指针） |
 | v1.5 | 2026-09-15 | 新增 §3.6 打包、发布与挂载细则（宿主包落 dependencies / 桌面 Release 直装需发版 / per-agent 服务禁 app 层注入 / profile 注册禁相对 junction，四条均为当日实证教训）；记忆按轮装配自洽根治五连修（dsh-memory v0.2.1→v0.2.5：挂载点迁移、身份自愈、自愈先行、检索取头部）+ mount-trace.log 可观测追踪；运行时 0.1.5-alpha.2 / rc.1 / 0.1.6-alpha.1 三代兼容验证零适配；7 仓批量发版对齐桌面 Release 直装 |
 | v1.6 | 2026-09-18 | 成员变更：dsh-computer 退出套件清单（主人拍板：dsh 官方已提供电脑操作插件，套件自有实现冗余）。§2 成员行撤销，总仓库子模块移除，install/build/test 清单同步；check-compat 的 allowExtras 与 dsh-twin 物化器的 tool-computer 探测逻辑保留作存量兼容（包不在即不追加/白名单只宽容不新增，重物化后悬空行自然消失） |
+| v1.7 | 2026-09-18 | 配置入口统一（主人拍板只保留插件详情页）：全部成员接入 dsh 0.1.6「插件」管理页配置区（plugins.bundle.config，key=包名；summary 一行简介 + page 表单/速览）——redact/twin/im-channel（手机连接）/yuyi 由 settings.* 槽位迁入（旧设置页 Tab 撤除），memory 新增 autopilot 配置路由（GET/POST /dsh-memory/autopilot，token 门禁）与表单，task-board 只读速览，ledger/actors/regression 新建 client 半（env.d.ts 环境类型 + tsconfig.client.json + esbuild build-client 模板，宿主 tsconfig 排除 src/client）；keyed 槽位卡片标识是 key 而非 id，零配置成员以只读速览充当健康面板 |
