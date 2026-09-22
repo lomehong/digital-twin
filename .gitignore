@@ -11,6 +11,9 @@ scripts/backup-*/
 # 生态工具（独立仓库，不属分身套件核心）
 dsh-plugin-manager/
 dsh-remote/
+dsh-architect/
+# 历史遗留：套件自有 dsh-computer 已于 2026-09-18 移除（独立仓库检出，不参与套件安装/发版）
+dsh-computer/
 .zcode/
 
 # 分身运行时抓取缓存（会话工作产物，不入库）
