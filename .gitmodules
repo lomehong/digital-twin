@@ -25,3 +25,6 @@
 [submodule "dsh-task-board"]
 	path = dsh-task-board
 	url = https://github.com/lomehong/dsh-task-board.git
+[submodule "dsh-mind"]
+	path = dsh-mind
+	url = https://github.com/lomehong/dsh-mind.git
