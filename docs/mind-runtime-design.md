@@ -1,7 +1,7 @@
 # 分身心智运行时（dsh-mind）设计草案
 
-> 状态：**v0.4——P1/P2(核心)/P3(v1) 已实施（见 §9 实施记录）；待主人拍板 D1–D5 中余项（D1 方案 A 已按建议实施）**
-> 日期：2026-09-18（v0.2）
+> 状态：**v0.5——P1/P2(核心)/P3(v1)/UI 重造 v1 已实施（见 §9 实施记录）；待主人拍板 D1–D5 中余项（D1 方案 A 已按建议实施）**
+> 日期：2026-09-18（v0.2）；2026-09-20（v0.5 UI 重造）
 > 评审纪要：`docs/reviews/mind-runtime-review-synthesis.md`（五份完整评审在同目录）
 > 关联：`docs/suite-charter.md`、研究底稿克隆 `%TEMP%\headlong-research`
 
@@ -102,11 +102,39 @@ idle | error | wake | run-summary`。必填 pin：`v/seq/ts/type/source`；`wake
 - **心智的 memory 写入禁止「授权」陈述类型**——授权只能来自批准通道（账本不变量），
   封死"自铸授权再自我放行"循环（security B1）
 
-### 3.3 可见性面板（plugins.bundle.config，五区块）
+### 3.3 UI/UX：心智主页（v0.5 UI 重造）
 
-① 成本行：今日已用/软顶/硬顶、当前退避档位 ② pending 列表（未销账承诺）
-③ kill switch 按钮 ④ 时间线最近 N 步（含投递状态）⑤ 24h 已发列表（delivered/
-failed 可重发）。路由 sameOrigin 门禁。
+> 第一原则的体验面落实：心智已经是人，UI 必须呈现人。**主语从「插件运行时」
+> 换成「TA」**——机器状态一律翻译为第一人称生活语言（narrate.ts 纯函数层，
+> 测试覆盖）；治理与成本数据保留但降为细节层（照护抽屉/可展开 detail）。
+> 时间线 schema、调度器、治理位阶、访客不可见硬规则零改动。
+
+**三挂点**（客户端，特性检测双写对齐 task-board）：
+- `main`（key=`mind`）：侧边栏「心智」一级页面 = TA 的家
+- `sidebar.panellist`（id=`mind`）：在场感图标（人形 + 状态点：思考呼吸/睡/停）
+- `plugins.bundle.config`（key=包名）：summary=迷你人物卡；page=心智主页
+
+**心智主页信息架构**（人视图默认）：
+① 在场感头部：呼吸光环（思考=呼吸绿/睡=暗蓝/停=灰）+ 第一人称状态句
+（presenceLine：退避→「安静一会儿」、静音→「我睡着了 01:00–08:00」、
+硬顶→「今天想得够多了，省着用」、被叫停→「是你让我停的」）
+② 留言（对话闭环）：输入框 → `POST /dsh-mind/say`（message_in 落时间线 +
+反应性唤醒，~1s tick 触发）→ TA 的回复（wake step FINAL）同界面呈现
+③ 生活流：时间线按天分组（今天/昨天/M月D日）叙事化——wake=时刻卡
+（fn→「我在想/我在办一件事/我想告诉你…」，触发源/用量/成本收进可展开 detail）、
+message_in=右气泡「你说」、idle 折叠「我歇了一会儿」、error 温和呈现
+「有个念头断了」
+④ 照护抽屉：预算条（心思花费/软硬顶人话化）、作息、下次自己醒、
+「N 件事等你点头」（pendingApprovals）、「让 TA 休息/叫醒 TA」（kill switch
+拟照护化，语义不变：显式停持久）
+
+**双模式**：默认永远是人；右上角「工程视图」一键切回五区块运维面板
+（原速览：成本行/状态/退避档位/kill/原始时间线），选择持久化 localStorage。
+
+**HTTP 面**（sameOrigin 门禁 + 写操作启动随机键门禁，先例 dsh-memory）：
+`GET /status`（v3：+quiet/pendingApprovals/spendLevel）、`GET /timeline?n=`、
+`POST /say`（text ≤2000 → message_in + 反应性唤醒）、`POST /kill`、
+`GET /token`（下发写门禁键）。
 
 ### 3.4 为什么不是常驻会话（维持 v0.1 结论，补正 arch 意见）
 
@@ -273,6 +301,7 @@ mind.markDelivered(seq) / mind.markFailed(seq, reason)           // 投递状态
 | **P2 渠道接入** | im-channel 注入观察（driver 惰性 injectObservation，缺席零回归）+ masking 复用；pending 深工显式协议 P2.1 跟进 | ✅ 核心完成（im-channel cbaa38c） |
 | **D4 主动源让位** | dsh-twin proactive 检测 dsh-mind 在场即让位（移交日志一次；状态卡汇入照旧） | ✅ 完成（twin a0dd0c0） |
 | **P3 记忆金字塔 v1** | 时间线分层 recap（F=10 机械卷积零成本版）接入唤醒上下文；LLM 逐层摘要与 dsh-memory 实体金字塔远期 | ✅ v1 完成（recap.ts，28/28 绿） |
+| **P3.5 UI/UX 重造 v1** | 心智主页（TA 的存在界面）：main/侧边栏一级入口 + 插件页人物卡 + narrate 叙事层 + 留言闭环（/say→message_in→反应性唤醒）+ 照护抽屉 + 工程/人双模式 + 写门禁键 HTTP 面 | ✅ 完成（v0.2.0，44/44 绿） |
 | **P4 远期** | 时间线只读会话投影、goals 精化、自我改进评估 | — |
 
 ### 实施记录（2026-09-18）
@@ -394,3 +423,4 @@ $1/日、Claude $5/日）；QUIET_HOURS IANA + 默认开启；THOUGHT_CAP=CAP；
 | v0.1 | 初稿（方向对齐：心智运行时 + 渠道纯适配器） |
 | v0.2 | 吸收五角色评审 18 阻断项：调度器规格（§11 新增）、执行器底座方案 A（§4.3）、治理位阶与守卫注入（§4.4/4.5）、禁自铸授权（§3.2）、两级 cap 与反应性护栏（§5.2/5.3）、kill switch fail-safe（§5.4）、契约单向化+六件套（§6）、pending 不吞单（§6.4）、时间线 schema v2+归档（§3.1）、可测性设计（§10 新增）、§8 自查回退+§3.6 对照、§7 补被消费/宿主消费与 D4 |
 | v0.3 | 新增 §12 生命周期与常驻保证：插件=宿主内代码的常驻语义（磁盘状态恢复/错过 due 只补一次/watchdog）、kill switch 双状态（显式停持久 vs 意外损坏回落保守运行——修正 v0.2 的一律到停）、宿主常驻部署矩阵（本机/专用盒/云） |
+| v0.5 | UI/UX 系统性重造（P3.5，主人拍板：人/工程双模式 + 独立心智页面 + 留言闭环）：§3.3 重写为心智主页三挂点（main/侧边栏/人物卡）+ narrate 叙事层（机器语义→第一人称生活语言）+ 照护抽屉（治理拟照护化）+ 留言闭环（/say → message_in 落时间线 + 反应性唤醒）；HTTP 面加写门禁键（先例 dsh-memory）；schema/调度/治理/红线零改动 |

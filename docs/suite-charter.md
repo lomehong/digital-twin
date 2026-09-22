@@ -63,7 +63,7 @@
 | **dsh-regression**（回归/影子） | `dsh-regression`；client 配置区（人格 CI 速览） | webServer | — | ✅（HostRunner 待接入） |
 | **dsh-redact**（出站脱敏） | `redact`（llm/stream 钩子）+ `masking`（已提供，im-channel 出站脱敏消费） | settings、llm | — | ✅ |
 | **im-channel**（IM 渠道，dsh-im-bot） | `im-channel`（pushToUser / botsStatus / reload） | agents、agentPresets、approval/question、workspaceRegistry、dsh-mind（人话注入心智时间线，缺席零回归） | dsh-memory（共享记忆挂载 + 按回合装配开关）→ 缺席则渠道会话按各自隔离；dsh-twin.noteActor（身份标注）→ 可选；`masking`（出站脱敏，dsh-redact 提供）→ 缺席首次 WARN 显式降级（原登记 #03 已销账） | ✅ |
-| **dsh-mind**（分身心智运行时，v0.1.0） | `dsh-mind`（injectObservation / wakeNow / setStopped）+ 心智时间线（append-only jsonl）+ 唤醒调度器（分级退避/两级 spend cap/kill switch）+ 插件页速览 | typertGateway（方案 A 唤醒会话，digital-twin 预设）、webServer（速览路由，sameOrigin）、timer（tick）、dsh-twin（人格/守卫）→ 缺席兜底、dsh-memory（learn/recall）→ 缺席时间线即记忆、dsh-task-board / dsh-ledger（act 治理落地）→ 缺席 act 收窄+对外挂起、im-channel（投递，P2） | dsh-twin proactive（在场时主动触达让位，D4）；全部可选增强缺席可用：自驱思考 + 时间线永续（持续工作本体，设计稿 docs/mind-runtime-design.md v0.4）| ✅ |
+| **dsh-mind**（分身心智运行时，v0.2.0） | `dsh-mind`（injectObservation / wakeNow / setStopped）+ 心智时间线（append-only jsonl）+ 唤醒调度器（分级退避/两级 spend cap/kill switch）+ 心智主页（main/侧边栏一级入口 + 插件页人物卡 + narrate 叙事层 + 留言闭环 `/say`，写门禁键；工程视图双模式，设计稿 §3.3 v0.5） | typertGateway（方案 A 唤醒会话，digital-twin 预设）、webServer（HTTP 面，sameOrigin + 写门禁）、timer（tick）、dsh-twin（人格/守卫）→ 缺席兜底、dsh-memory（learn/recall）→ 缺席时间线即记忆、dsh-task-board / dsh-ledger（act 治理落地）→ 缺席 act 收窄+对外挂起、im-channel（投递，P2） | dsh-twin proactive（在场时主动触达让位，D4）；全部可选增强缺席可用：自驱思考 + 时间线永续（持续工作本体，设计稿 docs/mind-runtime-design.md v0.5）| ✅ |
 | **ui-settings-im**（IM 设置界面） | plugins.bundle.config（im-channel 详情页「手机连接」配置区）+ shell.overlay | runtime、locale、slots | — | ✅ |
 
 ---
