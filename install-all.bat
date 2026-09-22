@@ -65,7 +65,7 @@ for %%D in ("%NODE_EXE%") do set "PATH=%%~dpD;%PATH%"
 
 echo ==================================================
 echo   DSH local plugin installer
-echo   actors / im-bot / ledger / memory /
+echo   actors / im-bot / ledger / memory / mind /
 echo   redact / regression / twin / yuyi
 echo   target profile: %DSH_HOME%\profiles\web
 echo ==================================================
@@ -198,6 +198,7 @@ const PLUGINS = [
   { dir: 'dsh-im-bot',     pkg: '@dsh-extra/dsh-client-ui-settings-im', bundle: true, sub: 'ui-settings-im' },
   { dir: 'dsh-ledger',     pkg: '@dsh-extra/dsh-ledger',     bundle: true },
   { dir: 'dsh-memory',     pkg: '@dsh-extra/dsh-memory',     bundle: true },
+  { dir: 'dsh-mind',       pkg: '@dsh-extra/dsh-mind',       bundle: true },
   { dir: 'dsh-redact',     pkg: '@dsh-extra/dsh-redact',     bundle: true },
   { dir: 'dsh-regression', pkg: '@dsh-extra/dsh-regression', bundle: true },
   { dir: 'dsh-task-board', pkg: '@dsh-extra/dsh-task-board', bundle: true },
