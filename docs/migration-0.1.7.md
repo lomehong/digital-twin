@@ -4,6 +4,22 @@
 > 依据：dsh-v0.1.6-alpha.2 → dsh-v0.1.7-alpha.2 全量差异审计（1461 commits）+ 宿主源码契约提取
 > 关联：`docs/suite-charter.md`（v1.1+）、`docs/task-board-decisions.md`
 
+## rc.1 基准修正（2026-09-23 晚）
+
+桌面端实际运行 **0.1.7-rc.1**（非 alpha.2）。经 diff 核实，套件消费面 alpha.2→rc.1 **零破坏**
+（agent-preset-registry 仅新增只读 readDocument 接口；configForms/volatile-update/
+MessageSourceMap/snapshotEvents 均未变）。真正的故障源是兼容门控：
+
+- 宿主 `plugin-manager` 只读 **peerDependencies** 的 `@deepseek-ai/dsh-*` 条目做
+  semver 校验（`semver.satisfies(runtime, range, {includePrerelease:true})`）；
+  `workspace:^|~|*` 视为「当前运行时版本」。
+- 上一轮批量升级把 dsh-twin / dsh-memory 的 peer 从范围误写成精确 `0.1.7-alpha.2`，
+  rc.1 运行时判不兼容拒绝激活 → 数字分身预设（编程注册随插件激活执行）与记忆工具失效。
+- 修复：twin/memory 的 peer 改 `>=0.1.7-alpha.1`（v0.4.7 / v0.2.9 已发版）；
+  五仓 devDeps 类型基线重钉 0.1.7-rc.1。yuyi/redact/computer 的 peer 本就是范围声明，
+  门控通过，无需重发版——**yuyi 需在桌面端重装**（旧 0.1.9 客户端等待已删除的
+  settingsScope 服务；0.1.10+ 客户端等待 configForms，rc.1 正常供给）。
+
 ## 0. 兼容性结论速览
 
 - ✅ 不变（零迁移）：tools/pre|post-execute waterfall（含 PreToolDecision/exec 字段）、
