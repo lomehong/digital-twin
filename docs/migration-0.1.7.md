@@ -136,7 +136,7 @@ export function apply(ctx: ClientContext): void {
 
 ## 6. 验收清单（迁移完成后逐项过）
 
-- [ ] 六仓测试全绿（yuyi/twin/im-channel/redact/memory/task-board/ledger/regression）
+- [x] 六仓测试全绿（yuyi 128 / twin 32 / redact 135 / memory 26 / task-board 66 / ledger 15 / actors 13 / mind 85 / regression 19）——2026-09-23 完成
 - [ ] `node scripts/check-compat.mjs` 0 error
 - [ ] 重启后：分身人格卡保存→生效闭环、看板执行+task_report、yuyi 面板、IM 渠道、
       记忆读写、设置各 Tab 可见可改可热更

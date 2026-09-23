@@ -235,10 +235,13 @@ function auditPresetDrift(spec) {
     warn(`预设漂移: ${spec.mountedId} 未物化（${mountedFile} 不存在），跳过`)
     return
   }
+  const sourceFile = spec.templateFile ?? spec.shippedStandardFile
+  if (sourceFile !== undefined && !existsSync(sourceFile)) {
+    warn(`预设漂移: 来源模板不存在（${sourceFile}）——0.1.7 起预设改为编程注册/宿主 bundle patch，漂移审计跳过（行覆盖改由包内单测保证）`)
+    return
+  }
   const mounted = rowNames(mountedFile)
-  const sourceNames = spec.templateFile
-    ? rowNames(spec.templateFile)
-    : rowNames(spec.shippedStandardFile)
+  const sourceNames = rowNames(sourceFile)
   for (const name of sourceNames) {
     if (!mounted.has(name)) {
       error(`预设漂移: ${spec.mountedId} 缺少来源行 name: '${name}'（来源=${spec.templateFile ? '仓库模板' : 'shipped standard'}）—— 模板已演进但副本未重物化：bump 物化器 PRESET_VERSION 后重启，或手工同步`)
