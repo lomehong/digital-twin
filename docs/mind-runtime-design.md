@@ -318,7 +318,7 @@ mind.markDelivered(seq) / mind.markFailed(seq, reason)           // 投递状态
 | 期 | 内容 | 状态 |
 |---|---|---|
 | **P1 心智本体** | 时间线（schema v2+归档）+ 调度器（§11 规格）+ 函数菜单唤醒 run（方案 A 底座 + 兜底人格/守卫 + dsh-memory learn/recall）+ 两级 cap + kill switch + 速览 | ✅ 完成（@dsh-extra/dsh-mind v0.1.0，22/22 绿，GitHub Release tarball 已发布） |
-| **P2 渠道接入** | im-channel 注入观察（driver 惰性 injectObservation，缺席零回归）+ masking 复用；pending 深工显式协议 P2.1 跟进 | ✅ 核心完成（im-channel cbaa38c） |
+| **P2 渠道接入** | im-channel 注入观察（driver 惰性 injectObservation，缺席零回归）+ masking 复用；pending 深工显式协议 P2.1 跟进 | ✅ 核心完成（im-channel cbaa38c）+ share 投递通道（channels.ts registerChannel/deliver，v0.3.7） |
 | **D4 主动源让位** | dsh-twin proactive 检测 dsh-mind 在场即让位（移交日志一次；状态卡汇入照旧） | ✅ 完成（twin a0dd0c0） |
 | **P3 记忆金字塔 v1** | 时间线分层 recap（F=10 机械卷积零成本版）接入唤醒上下文；LLM 逐层摘要与 dsh-memory 实体金字塔远期 | ✅ v1 完成（recap.ts，28/28 绿） |
 | **P3.5 UI/UX 重造 v1** | 心智主页（TA 的存在界面）：main/侧边栏一级入口 + 插件页人物卡 + narrate 叙事层 + 留言闭环（/say→message_in→反应性唤醒）+ 照护抽屉 + 工程/人双模式 + 写门禁键 HTTP 面 | ✅ 完成（v0.2.0，44/44 绿） |
