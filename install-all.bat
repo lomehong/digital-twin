@@ -339,6 +339,26 @@ for (const item of PLUGINS) {
   if (bundle && (!RELEASE || AVAILABLE.has(pkg))) manifest.dsh.profile.bundles = [...new Set([...manifest.dsh.profile.bundles, pkg])]
 }
 
+// ==== 宿主升级防复发：清理解析不到的 @deepseek-ai/* bundle 条目 ====
+// 宿主升级后，官方实验包可能被移除或合并（2026-09-22 实测：dsh 0.1.7-rc.1 把
+// dsh-experimental-agent-team-web-profile 并入 agent-team-profile 主体）——
+// 清单残留条目会在插件页标"异常"且无法解析。仅清理 @deepseek-ai/* 官方条目；
+// 套件自有包的存在性已在上方逐包校验，不在本清理范围。
+{
+  const bundleRoots = [
+    join(home, 'profiles', 'node_modules'),
+    join(profileDir, 'node_modules'),
+    join(home, '..', 'node', 'node_modules', '@deepseek-ai', 'dsh', 'node_modules'), // 宿主 node 安装布局：home 的同级 node 目录
+  ].filter((r) => existsSync(r))
+  const canResolve = (name) => bundleRoots.some((r) => existsSync(join(r, ...name.split('/'), 'package.json')))
+  const droppedBundles = manifest.dsh.profile.bundles.filter((b) => b.startsWith('@deepseek-ai/') && !canResolve(b))
+  if (droppedBundles.length > 0) {
+    manifest.dsh.profile.bundles = manifest.dsh.profile.bundles.filter((b) => !droppedBundles.includes(b))
+    console.log(`[install-all] 宿主升级清理：移除 ${droppedBundles.length} 个解析不到的官方 bundle 条目（新版宿主已不提供）：`)
+    for (const b of droppedBundles) console.log(`[install-all]   - ${b}`)
+  }
+}
+
 // ==== 宿主锚定：release 模式把宿主已有的 @deepseek-ai/* 全钉到宿主版本 ====
 // 为什么必须（2026-09-10 实测）：
 // ① dsh 0.1.x 全在预发布标签上（latest 停在 0.0.1-rc.1，0.1.5-* 只在 alpha/next），
