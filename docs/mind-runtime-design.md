@@ -1,7 +1,7 @@
 # 分身心智运行时（dsh-mind）设计草案
 
-> 状态：**v0.5——P1/P2(核心)/P3(v1)/UI 重造 v1 已实施（见 §9 实施记录）；待主人拍板 D1–D5 中余项（D1 方案 A 已按建议实施）**
-> 日期：2026-09-18（v0.2）；2026-09-20（v0.5 UI 重造）
+> 状态：**v0.7——P1/P2(核心)/P3(v1)/P3.5(UI) 已实施；P5 请求账设计就绪待实施（见 §9）；待主人拍板 D1–D5 中余项（D1 方案 A 已按建议实施）**
+> 日期：2026-09-18（v0.2）；2026-09-20（v0.5 UI 重造）；2026-09-24（v0.7 请求账）
 > 评审纪要：`docs/reviews/mind-runtime-review-synthesis.md`（五份完整评审在同目录）
 > 关联：`docs/suite-charter.md`、研究底稿克隆 `%TEMP%\headlong-research`
 
@@ -33,6 +33,8 @@ dsh-memory v0.2.7 已把记忆装配升到运行时级覆盖全部会话（对�
 - G6 成本可控：两级 spend cap、静音时段、kill switch（fail-safe 到「停」）
 - G7 **全局 fail-safe（v0.2 增）**：dsh-mind 内部任何异常绝不击穿宿主（LESSONS 2）
 - G8 **可测（v0.2 增）**：唤醒循环可确定性测试（假时钟/假 LLM/假渠道桩）
+- G9 **阻塞可达（v0.7 增）**：心智因缺主人输入/授权/在场而受阻时，请求**必达
+  主人一次**（结构化、可结清、可升级），此后静默轮询不空转——防噪不许退化成失联
 
 **非目标**：per-user 会话隔离（访客可见性走既有投影规则）；自我改进 fork/merge
 （远期）；替换各渠道 fast-reply 路径（保持现状）。
@@ -80,7 +82,7 @@ dsh-twin（人格投影/学习闭环）是两个关注点；五角色评审一�
   "trigger": "spontaneous | reactive | event | watchdog",
   "wakeId": "w-<ts>-<rand>",
   "content": "…",
-  "fn": "act | share | think | learn | recall | goals | idle",
+  "fn": "act | share | ask | think | learn | recall | goals | idle",
   "final": "交接棒：做了什么/剩什么/下一步",
   "usage": { "llmCalls": 1, "tokensIn": 5000, "tokensOut": 500, "costUsd": 0.0031 },
   "backoffLevel": 0,
@@ -117,7 +119,8 @@ idle | error | wake | run-summary`。必填 pin：`v/seq/ts/type/source`；`wake
 **心智主页信息架构**（人视图默认）：
 ① 在场感头部：呼吸光环（思考=呼吸绿/睡=暗蓝/停=灰）+ 第一人称状态句
 （presenceLine：退避→「安静一会儿」、静音→「我睡着了 01:00–08:00」、
-硬顶→「今天想得够多了，省着用」、被叫停→「是你让我停的」）
+硬顶→「今天想得够多了，省着用」、被叫停→「是你让我停的」、
+等待主人→「有件事卡住了，等你给：npm 凭据」（openAsks>0 时的存在句，§6.5））
 ② 留言（对话闭环）：输入框 → `POST /dsh-mind/say`（message_in 落时间线 +
 反应性唤醒，~1s tick 触发）→ TA 的回复（wake step FINAL）同界面呈现
 ③ 生活流：时间线按天分组（今天/昨天/M月D日）叙事化——wake=时刻卡
@@ -125,14 +128,15 @@ idle | error | wake | run-summary`。必填 pin：`v/seq/ts/type/source`；`wake
 message_in=右气泡「你说」、idle 折叠「我歇了一会儿」、error 温和呈现
 「有个念头断了」
 ④ 照护抽屉：预算条（心思花费/软硬顶人话化）、作息、下次自己醒、
-「N 件事等你点头」（pendingApprovals）、「让 TA 休息/叫醒 TA」（kill switch
-拟照护化，语义不变：显式停持久）
+「N 件事等你点头」（pendingApprovals）、「N 件事等你给」（openAsks：心智等待
+主人的输入/授权/窗口，点击展开请求清单，§6.5）、「让 TA 休息/叫醒 TA」（kill
+switch 拟照护化，语义不变：显式停持久）
 
 **双模式**：默认永远是人；右上角「工程视图」一键切回五区块运维面板
 （原速览：成本行/状态/退避档位/kill/原始时间线），选择持久化 localStorage。
 
 **HTTP 面**（sameOrigin 门禁 + 写操作启动随机键门禁，先例 dsh-memory）：
-`GET /status`（v3：+quiet/pendingApprovals/spendLevel）、`GET /timeline?n=`、
+`GET /status`（v3：+quiet/pendingApprovals/spendLevel/openAsks）、`GET /timeline?n=`、
 `POST /say`（text ≤2000 → message_in + 反应性唤醒）、`POST /kill`、
 `GET /token`（下发写门禁键）。
 
@@ -171,11 +175,22 @@ jsonl+速览等价，P1 采 jsonl（与 mem/traj 哲学一致、可 grep），P4
 
 ### 4.2 函数菜单（每次唤醒选一件事）
 
-`act | share | think | learn | recall | goals | idle`（语义同 headlong monolith，
-本地化改写）。规则：
+`act | share | ask | think | learn | recall | goals | idle`（act/share/think/
+learn/recall/goals/idle 语义同 headlong monolith，本地化改写；`ask` 见下）。
+规则：
 - **pending request 压倒菜单**；完成后 `message_out` 携 `resolves=<seq>` 交付销账
-- 每次唤醒恰好产出：≥1 条时间线步骤 + FINAL 交接棒；`idle` 是正当产出
-- **禁自铸授权**：learn 的 memory 写入限定陈述类型 ∈ {thought 类}（§3.2）
+- **ask 压倒硬撑**：目标的下一步需要主人提供/授权/在场时，选 `ask` 发起**一次**
+  结构化请求（要什么/为什么/给了之后我做什么），经请求账投递主人（§6.5），随后
+  照常推进其他工作——不硬撑等待，不重试被拒动作，也不把阻塞咽进散文
+- 每次唤醒恰好产出：≥1 条时间线步骤 + FINAL 交接棒；`idle` 是正当产出；`ask`
+  不是终态（开单之后世界照旧）
+- **禁自铸授权**：learn 的 memory 写入限定陈述类型 ∈ {thought 类}（§3.2）；
+  请求账存运行时 state（§6.5），同样不进 memory
+
+菜单完备性：七个动作动词覆盖「做事/分享/思考/学习/回忆/校准/停」，独缺「向主人
+开口请求」——自治体的对外依赖（凭据/授权/实机窗口）没有合法出口时，只能滞留为
+时间线散文，主人侧零感知（防噪纪律越严，失联越彻底）。`ask` 补全第八个动词：
+阻塞从叙事变成可投递、可结清、可升级的账目（§6.5）。
 
 ### 4.3 唤醒执行器底座（v0.2 写死：方案 A，arch B2）
 
@@ -195,7 +210,7 @@ dsh-twin 服务面获取**（禁止运行时值导入，宪章 §3.1 合规）�
 
 | 动作 | 裁决 | 留痕 |
 |---|---|---|
-| 对 master 的动作（think/learn/recall/goals） | 免裁决 | 时间线 |
+| 对 master 的动作（think/learn/recall/goals/ask） | 免裁决 | 时间线 + 请求账（§6.5） |
 | 对外触达（向非 master 渠道投递 / share 给生人） | **受治理**：执行器内主动 `ledger.check()`，L2+ 挂起待批 | 时间线 + 账本 |
 | act 落地执行 | task_delegate 原生治理路径 | 账本 |
 | 无账本（ledger 缺席） | 对外触达**保守挂起**（只记不发，WARN 一次） | 时间线 |
@@ -216,6 +231,10 @@ v0.6 修正（2026-09-22 成本事故）：
   机械空醒短路（idleShortCircuit，默认开）：无新观察、无事件、无待批、上一拍亦空转
   → 不调用模型，记 idle 步骤续排（空转拍成本降为 0）。
   反应性（reactive）/事件（event）**不受地板与短路影响**（G3：回应人永不限速）。
+  v0.7 增补（阻塞不驱动空转）：openAsks（§6.5）**不参与**短路/退避判定——
+  「等主人」与「无事可做」同价（等待不烧钱，触达靠渠道投递不靠心跳）；
+  DEEP_THINK 强制真醒拍的提示词必带 openAsks 摘要（不忘自己在等什么）；
+  >24h 未结清的请求经 §6.5 节流重投递，不由心跳负责。
 QUIET_HOURS：绑 IANA 时区（默认 Asia/Shanghai），默认开启（01:00–08:00），
              旅行一键切换；静音期 share 缓发（pending 豁免）
 ```
@@ -266,7 +285,9 @@ mind.markDelivered(seq) / mind.markFailed(seq, reason)           // 投递状态
 降级告知"此事受阻"）⑥ deliver 失败语义（failed 状态可重发，重发前 24h 指纹
 去重豁免——失败从未送达）。
 
-### 6.4 pending-request 协议（cost B2 修订：不吞单）
+### 6.4 pending-request 协议（cost B2 修订：不吞单；v0.7 扩为双向）
+
+**方向一（主人→心智）：不吞单。**
 
 - 渠道快速回复路径遇到深工请求 → 先 **t=0 承诺话术**（"收到，我在办，稍后给你
   结果"）→ injectObservation 带 `pending: true`
@@ -274,6 +295,30 @@ mind.markDelivered(seq) / mind.markFailed(seq, reason)           // 投递状态
 - **护栏不吞单**：kill switch / spend cap / watchdog 触发时 pending **不销账**，
   恢复后先排空；**15 分钟无进展** → 降级告知"此事受阻，原因 X"
 - 未销账 pending 在速览常驻展示
+
+**方向二（心智→主人）：不静默（v0.7）。** 同一条款的两面：主人交给心智的深工
+请求必达心智；对称地，心智的对外依赖（凭据/授权/实机窗口）也必达主人——否则
+防噪纪律会退化成信息不对称：等待只存在于时间线散文里，主人侧零感知。结构化
+落地见 §6.5 请求账。
+
+### 6.5 请求账 asks（P5：方向二的结构化落地）
+
+镜像 P2.1 承诺账（pendings）的账本语义，方向相反：
+
+- **入账**：模型选 `ask`（§4.2）→ `openAsk { id, seq, ts, goalTitle?, what,
+  why, howto }`；账本持久化于 `run/state.json`（运行时状态，**不进 memory**——
+  与 §3.2 同纪律：请求不是授权，账本不构成任何权限陈述）
+- **投递**：入账即经 `deliverToChannels({ to: 'master' })` **一次性**送达主人
+  （§6.3⑥ 同款指纹去重，24h 内不重复轰炸）；渠道全缺席 → 面板徽标承载（§7
+  降级矩阵），时间线留痕，**绝不静默**
+- **可见**：status `openAsks` 计数 + 存在体/照护抽屉「等待主人：N」（§3.3——
+  存在语义之外补依赖语义）
+- **升级**：>24h 未结清 → 每 24h 节流重投递一次（stalePendings 久悬语义的镜像，
+  方向相反）；「永不升级」视为协议违规
+- **结清**：主人消息入账（方向一）且模型消化对应请求 → 显式结算；关联目标
+  `[目标·完成]` 销账时自动结清
+- **防噪**：cap=10 丢最旧（pendings 同款防爆）；openAsks 不参与调度短路（§5.1）
+  ——等待零心跳成本
 
 ---
 
@@ -291,7 +336,7 @@ mind.markDelivered(seq) / mind.markFailed(seq, reason)           // 投递状态
 | dsh-twin | 内置兜底人格+守卫 |
 | dsh-memory | 时间线即记忆 |
 | dsh-task-board / dsh-ledger | act 收窄为只读；对外触达保守挂起 |
-| im-channel | message_out 仅记时间线（WARN 一次） |
+| im-channel | message_out 仅记时间线（WARN 一次）；ask 请求改由面板「等待主人」徽标承载（§6.5），不静默 |
 
 **D4（拍板项）**：dsh-twin `proactive.ts` 主动触达并入 mind 的 `share` 函数
 （消除双主动源），P2 实施，涉 dsh-twin 上游。
@@ -323,6 +368,7 @@ mind.markDelivered(seq) / mind.markFailed(seq, reason)           // 投递状态
 | **P3 记忆金字塔 v1** | 时间线分层 recap（F=10 机械卷积零成本版）接入唤醒上下文；LLM 逐层摘要与 dsh-memory 实体金字塔远期 | ✅ v1 完成（recap.ts，28/28 绿） |
 | **P3.5 UI/UX 重造 v1** | 心智主页（TA 的存在界面）：main/侧边栏一级入口 + 插件页人物卡 + narrate 叙事层 + 留言闭环（/say→message_in→反应性唤醒）+ 照护抽屉 + 工程/人双模式 + 写门禁键 HTTP 面 | ✅ 完成（v0.2.0，44/44 绿） |
 | **P4 远期** | 时间线只读会话投影、goals 精化、自我改进评估 | 部分：投影落地为心智 Tab「TA 的一生」只读全史浏览器（宿主无只读会话语义，session 目录投影会生成活会话——偏差已记录）；goals 精化以 [目标] 标记约定 + 读侧提取 + 提示词注入/工程视图呈现落地（v0.5.0，68/68 绿）；自我改进评估仍远期 |
+| **P5 请求账（asks）** | §6.5 落地：`ask` 动词（§4.2）+ 请求账（run/state.json，不进 memory）+ 渠道一次性投递与 24h 节流升级 + status/存在体「等待主人」依赖语义 + 守则「被拒→开单→继续」 | 待实施 |
 
 ### 实施记录（2026-09-18）
 
@@ -351,6 +397,10 @@ mind.markDelivered(seq) / mind.markFailed(seq, reason)           // 投递状态
 / config 损坏 fail-safe 到停 / 崩溃弃单（无 FINAL wake）+ 只续排程 / pending 不吞
 单（四条护栏路径）/ 降级矩阵逐格（含全缺席）/ 时间线 schema pin 与半行容错 /
 create()-式外部契约守卫（菜单输出解析、适配器契约、兄弟服务面）
+
+**P5 用例**：ask 入账即投递（指纹去重防重轰炸）/ >24h 节流重投递 / cap=10 丢最旧
+/ 结清路径（显式结算 / 目标销账联动 / 主人消息消化）/ openAsks 不参与短路、
+DEEP_THINK 摘要注入 / 渠道全缺席 → 面板承载不静默（§7 矩阵逐格）
 
 ### 10.3 回放验收
 任一历史唤醒可从时间线单独回放：触发源 → 装配的上下文摘要 → 函数选择 → 步骤 →
@@ -423,7 +473,8 @@ dsh-mind 的调度器是宿主 timer 上的 tick 循环：**宿主进程活着�
 message_out 复用出站链（masking）；生人投递默认挂起；两级 cap 数字（deepseek
 $1/日、Claude $5/日）；QUIET_HOURS IANA + 默认开启；THOUGHT_CAP=CAP；spend 持久
 化；errored run ≠ idle；滚动归档 180 天；contract-guard 四组 + 流程门禁；中文消
-息写作规范对照表入提示词。
+息写作规范对照表入提示词；ask 请求账一次性主动通知 + 24h 节流升级（防噪与知情
+并立，G9）；账本存 state 不进 memory。
 
 **待主人拍板**：
 | # | 问题 | 建议 |
@@ -445,3 +496,4 @@ $1/日、Claude $5/日）；QUIET_HOURS IANA + 默认开启；THOUGHT_CAP=CAP；
 | v0.3 | 新增 §12 生命周期与常驻保证：插件=宿主内代码的常驻语义（磁盘状态恢复/错过 due 只补一次/watchdog）、kill switch 双状态（显式停持久 vs 意外损坏回落保守运行——修正 v0.2 的一律到停）、宿主常驻部署矩阵（本机/专用盒/云） |
 | v0.5 | UI/UX 系统性重造（P3.5，主人拍板：人/工程双模式 + 独立心智页面 + 留言闭环）：§3.3 重写为心智主页三挂点（main/侧边栏/人物卡）+ narrate 叙事层（机器语义→第一人称生活语言）+ 照护抽屉（治理拟照护化）+ 留言闭环（/say → message_in 落时间线 + 反应性唤醒）；HTTP 面加写门禁键（先例 dsh-memory）；schema/调度/治理/红线零改动 |
 | v0.6 | 成本护栏修正（2026-09-22 主人套餐严重超支事故）：§5.1 新增自驱地板 MIN_SPONTANEOUS=300s（兑现 G1「最低 5 分钟一醒」——旧实现 5s 起跳 + engaged 归零，实测 15–45s/拍）+ 机械空醒短路（无新事不调用模型）；runner 用量字段对齐宿主 TokenUsage 契约（inputTokens/outputTokens，旧字段致计量恒 0、两级 cap 失效）；反应性/事件触发不受限 |
+| v0.7 | 请求账 P5（2026-09-24 分身阻塞空转复盘：目标卡在主人输入，防噪纪律致主人侧零感知）：G9 阻塞可达 + §4.2 菜单补第 8 动词 `ask`（完备性——「向主人开口请求」此前无合法出口，阻塞只能滞留为时间线散文）+ §6.4 扩为双向（不吞单/不静默）+ §6.5 请求账 asks（一次性投递/24h 节流升级/state.json 账本不进 memory）+ §5.1 openAsks 不参与短路 + §3.3「等待主人」依赖语义 + §4.5/§7/§9/§10/§13 配套 |
