@@ -384,9 +384,9 @@ function hostHarnessVersions() {
 }
 // pnpm ≥10 的设置新家是 pnpm-workspace.yaml（package.json 的 "pnpm" 字段不再被
 // 读取——2026-09-10 实测 pnpm 12.3.4：overrides 静默失效 + 构建脚本默认拦截，
-// ERR_PNPM_IGNORED_BUILDS 直接安装失败）。overrides（宿主锚定）与构建脚本许可
-// 统一写到 workspace yaml，对 pnpm 9/11/12 均有效；manifest 遗留 pnpm 字段一并
-// 清理（pnpm 12 会对它告警）。
+// ERR_PNPM_IGNORED_BUILDS 直接安装失败）。注意（2026-09-24 实测 9.14.2）：pnpm 9
+// 完全不读 workspace yaml 的设置键——overrides 只写这里对 pnpm 9 无效，必须按
+// 探测到的版本分通道双写（见下方调用处）；本函数只负责 yaml 侧的统一 upsert。
 function upsertWorkspaceYaml(profileDir, managed) {
   const CR = String.fromCharCode(13), LF = String.fromCharCode(10)
   const EOL = new RegExp(CR + '?' + LF)
@@ -414,10 +414,19 @@ function upsertWorkspaceYaml(profileDir, managed) {
   }
   writeFileSync(wsPath, kept.join(LF) + LF)
 }
+// 先定位 pnpm 并探测版本——版本决定设置写入通道（yaml 还是 package.json#pnpm）。
+const pnpm = locatePnpm()
+if (pnpm === null) {
+  console.error('[install-all] pnpm not found (PATH / %APPDATA%\\npm / corepack all missing). Install pnpm or Node.js with corepack.')
+  process.exit(1)
+}
+console.log(`[install-all] pnpm ${pnpm.version ? `${pnpm.version.text} (major ${pnpm.version.major})` : 'version unknown'} via ${pnpm.via}`)
+
 // 构建脚本许可：protobufjs/node-pty/koffi/esbuild 是套件依赖里已知带 install 脚本的包
 const BUILD_ALLOWED = { protobufjs: true, 'node-pty': true, koffi: true, esbuild: true }
+let overrides = {}
 if (RELEASE) {
-  const overrides = hostHarnessVersions()
+  overrides = hostHarnessVersions()
   const count = Object.keys(overrides).length
   if (count === 0) {
     console.error('[install-all] host store has no @deepseek-ai/* packages — run dsh web once before installing the suite.')
@@ -428,44 +437,91 @@ if (RELEASE) {
 } else {
   upsertWorkspaceYaml(profileDir, { allowBuilds: BUILD_ALLOWED, onlyBuiltDependencies: Object.keys(BUILD_ALLOWED) })
 }
-delete manifest.pnpm
+// 按 pnpm 版本分通道（2026-09-24 实测根因修复）：
+// - pnpm ≥10：设置只认 pnpm-workspace.yaml，上面已写；package.json#pnpm 字段
+//   删除（pnpm 12 会对该字段告警）。
+// - pnpm 9（实测 9.14.2）：完全不读 workspace yaml 的设置键——overrides 静默失效，
+//   且 autoInstallPeers 默认 true，对预发布-only 的 @deepseek-ai/* 区间（如 >=0.1.7）
+//   自动补装 peer 直接 ERR_PNPM_NO_MATCHING_VERSION。双写：yaml 留给未来升级，
+//   package.json#pnpm + .npmrc 才是 9 真正读取的家。
+const legacyChannel = !pnpm.version || pnpm.version.major < 10
+if (legacyChannel) {
+  manifest.pnpm = {
+    ...(RELEASE && Object.keys(overrides).length > 0 ? { overrides } : {}),
+    autoInstallPeers: false,
+    strictPeerDependencies: false,
+    onlyBuiltDependencies: Object.keys(BUILD_ALLOWED),
+  }
+  ensureNpmrcSettings([
+    ['node-linker', 'hoisted'],
+    ['auto-install-peers', 'false'],
+    ['strict-peer-dependencies', 'false'],
+  ])
+  console.log(`[install-all] pnpm ${pnpm.version ? pnpm.version.text : 'unknown'} <10: settings also written into package.json#pnpm + .npmrc (pnpm 9 ignores pnpm-workspace.yaml settings)`)
+} else {
+  delete manifest.pnpm
+}
 writeFileSync(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`)
 
-// pnpm refuses to add deps to the workspace root unless this check is off
-const npmrcPath = join(profileDir, '.npmrc')
-if (!existsSync(npmrcPath) || !readFileSync(npmrcPath, 'utf8').includes('ignore-workspace-root-check=true')) {
-  appendFileSync(npmrcPath, 'ignore-workspace-root-check=true\n')
+/** .npmrc 键值钉正：已存在的键原位更新为指定值，缺失的追加（幂等，可重复运行）。 */
+function ensureNpmrcSettings(pairs) {
+  const npmrcPath = join(profileDir, '.npmrc')
+  let current = existsSync(npmrcPath) ? readFileSync(npmrcPath, 'utf8') : ''
+  let updated = current
+  for (const [key, value] of pairs) {
+    const line = `${key}=${value}`
+    const re = new RegExp(`^[ \\t]*${key}[ \\t]*=.*$`, 'm')
+    if (re.test(updated)) updated = updated.replace(re, line)
+    else {
+      if (updated && !updated.endsWith('\n')) updated += '\n'
+      updated += line + '\n'
+    }
+  }
+  if (updated !== current) writeFileSync(npmrcPath, updated)
 }
+// pnpm refuses to add deps to the workspace root unless this check is off
+ensureNpmrcSettings([['ignore-workspace-root-check', 'true']])
 // 套件插件的 @deepseek-ai/* peer 由**宿主上层 store**（<home>/profiles/node_modules）
 // 满足，pnpm 看不到那层、会在报告里逐条标 missing peer——实测运行时解析完全正常
 // （2026-09-10 逐插件 import 探针全 OK）。显式关掉严格 peer 检查：这些是信息性告警，
 // 不能让未来某个 pnpm 版本把它升级成硬错误、把生产安装整死。
-if (!existsSync(npmrcPath) || !readFileSync(npmrcPath, 'utf8').includes('strict-peer-dependencies=false')) {
-  appendFileSync(npmrcPath, 'strict-peer-dependencies=false\n')
-}
+ensureNpmrcSettings([['strict-peer-dependencies', 'false']])
 
 // ==== locate pnpm: PATH first, then %APPDATA%\npm, then corepack ====
 // 桌面版 dsh 的 pnpm 不在 PATH（历史上 ENOENT 过）；PATH 也没有时 node 自带的
-// corepack 是最后兜底。返回 { cmd, args } 或 null。
+// corepack 是最后兜底。返回 { cmd, args, via, version } 或 null。version.major
+// 决定设置通道：pnpm ≥10 读 pnpm-workspace.yaml，pnpm 9 只读 package.json#pnpm
+// 与 .npmrc（2026-09-24 实测 9.14.2，见下方设置写入处）。能启动但版本解析不出
+// 时 version 为 null，按 <10 通道处理（双写保底）。
+function probePnpmVersion(cmd, args) {
+  const r = spawnSync(cmd, [...args, '--version'], { encoding: 'utf8', shell: process.platform === 'win32' })
+  if (r.status !== 0) return null
+  const m = /(\d+)\.\d+\.\d+/.exec(String(r.stdout ?? '').trim())
+  return m ? { major: Number(m[1]), text: m[0] } : null
+}
 function locatePnpm() {
-  if (spawnSync('pnpm', ['--version'], { stdio: 'ignore', shell: process.platform === 'win32' }).status === 0) {
-    return { cmd: 'pnpm', args: [], via: 'PATH' }
-  }
-  const appdataPnpm = join(process.env.APPDATA ?? '', 'npm', 'pnpm.cmd')
-  if (existsSync(appdataPnpm)) return { cmd: appdataPnpm, args: [], via: appdataPnpm }
-  if (spawnSync('corepack', ['--version'], { stdio: 'ignore', shell: process.platform === 'win32' }).status === 0) {
-    return { cmd: 'corepack', args: ['pnpm'], via: 'corepack' }
+  const candidates = [
+    { cmd: 'pnpm', args: [], via: 'PATH' },
+    { cmd: join(process.env.APPDATA ?? '', 'npm', 'pnpm.cmd'), args: [], via: 'APPDATA npm' },
+    { cmd: 'corepack', args: ['pnpm'], via: 'corepack' },
+  ]
+  for (const candidate of candidates) {
+    const alive = spawnSync(candidate.cmd, [...candidate.args, '--version'], { stdio: 'ignore', shell: process.platform === 'win32' }).status === 0
+    if (!alive) continue
+    return { ...candidate, version: probePnpmVersion(candidate.cmd, candidate.args) }
   }
   return null
 }
 
-const pnpm = locatePnpm()
-if (pnpm === null) {
-  console.error('[install-all] pnpm not found (PATH / %APPDATA%\\npm / corepack all missing). Install pnpm or Node.js with corepack.')
-  process.exit(1)
+console.log(`[install-all] manifest updated (${RELEASE ? AVAILABLE.size : PLUGINS.length} packages${RELEASE ? ' from GitHub Releases' : ''}), running pnpm install (via ${pnpm.via}${pnpm.version ? ' ' + pnpm.version.text : ''})...`)
+let result = spawnSync(pnpm.cmd, [...pnpm.args, 'install'], { cwd: profileDir, stdio: 'inherit', shell: process.platform === 'win32' })
+// 锁文件自愈重试：历史失败残留的锁文件条目可能缺 integrity/损坏，pnpm 会直接拒装
+// （2026-09-24 实测 ERR_PNPM_MISSING_TARBALL_INTEGRITY；官方建议即重建锁文件条目）。
+// --fix-lockfile 原地重建坏条目；--no-frozen-lockfile 防 CI 环境变量误开冻结模式。
+if (result.status !== 0) {
+  console.log('[install-all] pnpm install failed — retrying once with --fix-lockfile --no-frozen-lockfile ...')
+  result = spawnSync(pnpm.cmd, [...pnpm.args, 'install', '--fix-lockfile', '--no-frozen-lockfile'], { cwd: profileDir, stdio: 'inherit', shell: process.platform === 'win32' })
 }
-console.log(`[install-all] manifest updated (${RELEASE ? AVAILABLE.size : PLUGINS.length} packages${RELEASE ? ' from GitHub Releases' : ''}), running pnpm install (via ${pnpm.via})...`)
-const result = spawnSync(pnpm.cmd, [...pnpm.args, 'install'], { cwd: profileDir, stdio: 'inherit', shell: process.platform === 'win32' })
 
 // pnpm 9 on Windows creates broken junctions for cross-drive absolute link:
 // deps (target becomes profile-relative). Detect and recreate them.
