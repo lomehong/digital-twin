@@ -143,8 +143,8 @@ exit /b 1
  * Env: DSH_HOME (dsh home dir), DSH_PROFILE (default: web)
  */
 import { spawnSync } from 'node:child_process'
-import { existsSync, readFileSync, writeFileSync, appendFileSync, rmSync, lstatSync, mkdirSync, readdirSync, statSync } from 'node:fs'
-import { join, resolve, dirname } from 'node:path'
+import { existsSync, readFileSync, writeFileSync, appendFileSync, rmSync, lstatSync, mkdirSync, readdirSync, statSync, renameSync } from 'node:fs'
+import { join, resolve, dirname, relative } from 'node:path'
 
 const REPO_ROOT = resolve(process.argv[2] ?? process.cwd())
 /** -Release：最终用户模式，依赖直指 GitHub Release tarball，而非本地 link: 目录。 */
@@ -190,6 +190,9 @@ if (process.platform === 'win32' && !process.env.HTTPS_PROXY && !process.env.HTT
   } catch { /* best effort: no proxy env means direct connection, as before */ }
 }
 const profileDir = join(home, 'profiles', PROFILE)
+// RELEASE 模式把 GitHub Release tarball 下载到此缓存目录，manifest 用 file: 引用（根因见
+// 下方 downloadTarball 段）。持久于 home 下：重跑幂等、frozen 安装可复用、与 profile 同盘。
+const suiteTarballDir = join(home, '.suite-tarballs')
 
 /** dir = local dir; bundle = register as profile layer; sub = subpackage path. */
 const PLUGINS = [
@@ -251,13 +254,15 @@ manifest.dsh.profile.bundles ??= []
 delete manifest.dependencies['dsh-im-bot']
 manifest.dsh.profile.bundles = manifest.dsh.profile.bundles.filter(b => b !== 'dsh-im-bot')
 
-// release 模式：依赖 = GitHub Release tarball URL（/releases/latest/download/<name>-latest.tgz）。
-// 两条 2026-09-10 需求方确认的规则：
-// ① 全量要求：任一插件缺 Release 资产即中止（套件少几块 = 工作台缺功能，比明确失败更糟），
-//    不做部分安装、不改动任何状态。
-// ② 可更新：URL 带 `?release=<tag>`（tag 取自 /releases/latest 的 302 Location，零 API 配额）。
-//    同 Release 重跑 = 同一 specifier = pnpm 幂等跳过；发了新 Release = specifier 变化 =
-//    pnpm 重新解析并下载新 tarball——「生产安装」因此同时就是「生产更新」。
+// release 模式：从 GitHub Release（/releases/latest/download/<name>-latest.tgz）下载
+// tarball 到本地缓存，manifest 依赖写成本地 file: 路径——不再直接写远程 URL（远程 HTTP
+// tarball 会触发 pnpm 10.34.1+ 的 ERR_PNPM_MISSING_TARBALL_INTEGRITY 回归，详见下方
+// AVAILABLE 段的根因说明）。两条 2026-09-10 需求方确认的规则仍然成立：
+// ① 全量要求：任一插件缺 Release 资产 / 下载失败即中止（套件少几块 = 工作台缺功能，比
+//    明确失败更糟），不做部分安装、不改动 manifest。
+// ② 可更新：本地文件名带 <tag>（tag 取自 /releases/latest 的 302 Location，零 API 配额）。
+//    同 Release 重跑 = 同一 file: specifier = pnpm 幂等跳过；发了新 Release = tag 变 =
+//    文件名变 = specifier 变 = pnpm 重新解析——「生产安装」因此同时就是「生产更新」。
 const releaseUrl = (item, tag) =>
   `https://github.com/lomehong/${item.dir}/releases/latest/download/${item.pkg.split('/').pop()}-latest.tgz`
     + (tag ? `?release=${encodeURIComponent(tag)}` : '')
@@ -299,6 +304,38 @@ async function headProbe(url, attempts = 3) {
   }
   return headProbePowerShell(url)
 }
+
+/** 下载 Release tarball 到本地：node fetch 直连 → ghfast 镜像 → PowerShell(系统代理) 兜底。
+ * 先写 .part 再原子改名，避免半截文件被当完整包复用；全部尝试失败抛错。 */
+async function downloadTarball(url, destPath) {
+  const part = destPath + '.part'
+  const ghfast = url.replace('https://github.com/', 'https://ghfast.top/https://github.com/')
+  for (const u of [url, ghfast]) {
+    try {
+      const r = await fetch(u, { redirect: 'follow' })
+      if (!r.ok) throw new Error(`HTTP ${r.status}`)
+      const buf = Buffer.from(await r.arrayBuffer())
+      if (buf.length === 0) throw new Error('empty body')
+      writeFileSync(part, buf)
+      rmSync(destPath, { force: true }); renameSync(part, destPath)
+      return u
+    } catch { rmSync(part, { force: true }) }
+  }
+  for (const u of [url, ghfast]) {
+    if (downloadViaPowerShell(u, part)) { rmSync(destPath, { force: true }); renameSync(part, destPath); return `${u} (ps)` }
+    rmSync(part, { force: true })
+  }
+  throw new Error('all download attempts failed')
+}
+/** PowerShell 兜底下载：走 Windows 系统代理，实测比 node 直连稳定（见 headProbePowerShell 注）。 */
+function downloadViaPowerShell(url, destPath) {
+  rmSync(destPath, { force: true })
+  const script = "$ErrorActionPreference='Stop'; try { Invoke-WebRequest -UseBasicParsing -MaximumRedirection 5 -TimeoutSec 120 -Uri '"
+    + url + "' -OutFile '" + destPath + "'; 'OK' } catch { 'ERR' }"
+  const done = spawnSync('powershell', ['-NoProfile', '-NonInteractive', '-Command', script], { encoding: 'utf8' })
+  return String(done.stdout ?? '').trim().endsWith('OK') && existsSync(destPath) && statSync(destPath).size > 0
+}
+
 const AVAILABLE = new Map()
 if (RELEASE) {
   console.log('[install-all] release mode: probing GitHub Releases ...')
@@ -323,6 +360,34 @@ if (RELEASE) {
         : '[install-all] aborted before changing anything：有插件尚未发布 Release'
     )
     process.exit(1)
+  }
+}
+
+// RELEASE：把探测到的远程 Release tarball 下载到本地缓存，manifest 改用 file: 依赖。
+// 为什么不再直接写远程 URL（2026-09-25 根因）：pnpm 10.34.1+ 为修复 CVE-2026-50021
+// 强制要求锁文件每个条目带 integrity（issue #13022 回归），但 pnpm 对**远程 HTTP/git
+// tarball 依赖**解析后不写 integrity（issue #12001 / CVE-2025-69263），于是它自己的校验
+// 又拒绝该条目 → ERR_PNPM_MISSING_TARBALL_INTEGRITY；--fix-lockfile 与全新解析都无法
+// 自愈（每次重写锁文件都再次丢 integrity）。本地 file: tarball 由 pnpm 直接对文件算
+// hash 写入 integrity，绕开该回归。任一下载失败即中止（全量硬要求不变，不改动 manifest）。
+if (RELEASE) {
+  mkdirSync(suiteTarballDir, { recursive: true })
+  for (const [pkg, url] of [...AVAILABLE]) {
+    let tag = null
+    try { tag = new URL(url).searchParams.get('release') } catch { /* 退回 latest */ }
+    const name = url.slice(url.lastIndexOf('/') + 1).split('?')[0].replace(/\.tgz$/, '')
+    const safeTag = String(tag ?? 'latest').replace(/[\\/:*?"<>|]/g, '_')
+    const dest = join(suiteTarballDir, `${name}-${safeTag}.tgz`)
+    try {
+      const via = await downloadTarball(url, dest)
+      const rel = relative(profileDir, dest).replace(/\\/g, '/')
+      AVAILABLE.set(pkg, `file:${rel}`)
+      console.log(`[install-all] cached ${pkg} ${tag ?? 'latest'} -> file:${rel} (via ${via})`)
+    } catch (e) {
+      console.error(`[install-all] 下载 Release tarball 失败：${pkg} (${url}) — ${e instanceof Error ? e.message : String(e)}`)
+      console.error('[install-all] aborted before changing anything：Release tarball 下载失败（稍后重试即可）')
+      process.exit(1)
+    }
   }
 }
 
@@ -515,9 +580,11 @@ function locatePnpm() {
 
 console.log(`[install-all] manifest updated (${RELEASE ? AVAILABLE.size : PLUGINS.length} packages${RELEASE ? ' from GitHub Releases' : ''}), running pnpm install (via ${pnpm.via}${pnpm.version ? ' ' + pnpm.version.text : ''})...`)
 let result = spawnSync(pnpm.cmd, [...pnpm.args, 'install'], { cwd: profileDir, stdio: 'inherit', shell: process.platform === 'win32' })
-// 锁文件自愈重试：历史失败残留的锁文件条目可能缺 integrity/损坏，pnpm 会直接拒装
-// （2026-09-24 实测 ERR_PNPM_MISSING_TARBALL_INTEGRITY；官方建议即重建锁文件条目）。
-// --fix-lockfile 原地重建坏条目；--no-frozen-lockfile 防 CI 环境变量误开冻结模式。
+// 锁文件自愈重试：历史失败残留的锁文件条目可能损坏，pnpm 会直接拒装。--fix-lockfile
+// 原地重建坏条目；--no-frozen-lockfile 防 CI 环境变量误开冻结模式。
+// 注意（2026-09-25）：--fix-lockfile 治不了「远程 URL tarball 缺 integrity」的 pnpm 回归
+// （每次重写都再丢，issue #12001/#13022）——那条路已改走本地 file: tarball（见 downloadTarball）。
+// 此重试仅作为通用锁文件自愈兜底保留。
 if (result.status !== 0) {
   console.log('[install-all] pnpm install failed — retrying once with --fix-lockfile --no-frozen-lockfile ...')
   result = spawnSync(pnpm.cmd, [...pnpm.args, 'install', '--fix-lockfile', '--no-frozen-lockfile'], { cwd: profileDir, stdio: 'inherit', shell: process.platform === 'win32' })
@@ -606,9 +673,9 @@ if (!RELEASE) {
 const EXPECTED = RELEASE ? PLUGINS.filter(({ pkg }) => AVAILABLE.has(pkg)) : PLUGINS
 const linksOk = () => EXPECTED.every(({ pkg }) => existsSync(join(profileDir, 'node_modules', ...pkg.split('/'), 'package.json')))
 let installOk = result.status === 0 && linksOk()
-// GitHub 直连失败兜底（真实故障 2026-09-16 新机）：release 探针成功但 pnpm 拉
-// github.com Release tarball 报 error sending request——清单 URL 切 ghfast 镜像重试一次。
-// 仅生产通道（link: 通道没有远程下载）。
+// （历史兜底，2026-09-25 起对 file: 依赖已是空操作）GitHub 直连失败时把清单里的
+// github.com URL 依赖切 ghfast 镜像重试。现 RELEASE 依赖已改本地 file: tarball，镜像
+// 兜底前移到 downloadTarball，故 githubDeps 恒为空、本块不再触发；保留以防未来回退。
 if (RELEASE && !installOk) {
   const manifest2 = JSON.parse(readFileSync(manifestPath, 'utf8'))
   const githubDeps = Object.entries(manifest2.dependencies ?? {})
