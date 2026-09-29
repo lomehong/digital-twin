@@ -4,6 +4,19 @@
 > 依据：dsh-v0.1.6-alpha.2 → dsh-v0.1.7-alpha.2 全量差异审计（1461 commits）+ 宿主源码契约提取
 > 关联：`docs/suite-charter.md`（v1.1+）、`docs/task-board-decisions.md`
 
+## 0.2.0-rc.2 适配核验（2026-09-26）
+
+官方运行时发布 v0.2.0-rc.2（npm 包已同步发布）。对照 diff 核实套件消费面：
+
+- **零破坏**：session/types 仅文档措辞；tools 的 ask 决策新增可选 displayReason（additive）；
+  agent-preset-registry 移除 `modeSelectionEnabled`（套件未引用，`defaultId` 语义不变，
+  twin 的 selectedDefault 写入路径不变）；loader volatile 规则/事件与 cosmokit Volatile 未动；
+  cordis 4.0.4、schemastery 3.18.4 均未升主版本；**无包删除**（仅新增 shortcuts/otel 等）。
+- 客户端插槽 conversation.view / plugins.bundle.config / shell.overlay / sidebar.panellist 全部在位。
+- 兼容门控：五仓 peerDependencies 均为范围声明，0.2.0-rc.2 校验通过，**无需重发版**。
+- 实证：五仓 devDeps 重钉 0.2.0-rc.2 后 typecheck+test+build 全绿
+  （yuyi 133 / twin 81 / redact 136 / memory 26 / computer 9，含并行 Agent 新增用例）。
+
 ## rc.1 基准修正（2026-09-23 晚）
 
 桌面端实际运行 **0.1.7-rc.1**（非 alpha.2）。经 diff 核实，套件消费面 alpha.2→rc.1 **零破坏**
