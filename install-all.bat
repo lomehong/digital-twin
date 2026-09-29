@@ -95,7 +95,7 @@ del "%JSFILE%" >nul 2>nul
 if %RC% neq 0 goto :fail
 
 echo.
-echo Install OK! Restart DeepSeek Harness (dsh web / desktop) to load plugins.
+echo Install OK! dsh web service was stopped for install - the shell restarts it (or start dsh manually).
 goto :end
 
 :fail
@@ -578,8 +578,64 @@ function locatePnpm() {
   return null
 }
 
+// ==== 停 dsh web 服务（守护台账 #4/#5/#6/#7/#13-#17 移交，2026-09-29）====
+// 运行中的 web 服务（壳 supervisor 的 child，node.exe）映射着宿主依赖树的
+// libvips-42.dll（@img/sharp）；pnpm 更新依赖时 npm cleanup unlink 该 DLL 报
+// EPERM → 安装整体回滚（9/24 起复发 9+ 次）。壳把 child/shell pid 写在
+// <appdata>/runtime.pid：据此精确停止子进程；taskkill 前校验镜像必须是
+// node.exe（pid 复用/换壳场景宁可不杀，绝不误伤壳本身）。安装后的拉起由
+// 壳侧 restart_by_mode 负责（安装流程第 4 步已具备）。
+function stopDshWebService() {
+  if (process.platform !== 'win32') return
+  let parsed = null
+  try { parsed = JSON.parse(readFileSync(join(home, '..', 'runtime.pid'), 'utf8')) } catch { /* 文件缺失/非 JSON：服务未由壳拉起 */ }
+  const childPid = typeof parsed?.child_pid === 'number' ? parsed.child_pid : null
+  if (childPid === null || childPid <= 0) {
+    console.log('[install-all] dsh web 服务未在运行（runtime.pid 缺失/无效）——跳过停止。')
+    return
+  }
+  const probe = () => String(spawnSync('tasklist', ['/FI', `PID eq ${childPid}`, '/FO', 'CSV', '/NH'], { encoding: 'utf8', shell: false }).stdout ?? '').trim()
+  if (!probe().includes('node.exe')) {
+    console.log(`[install-all] runtime.pid 的 child_pid ${childPid} 不是 node.exe（壳侧已停或 pid 已复用）——跳过停止。`)
+    return
+  }
+  console.log(`[install-all] 停止 dsh web 服务（pid ${childPid}${typeof parsed.port === 'number' ? `，port ${parsed.port}` : ''}）——避免 pnpm 更新依赖时 DLL 被占用（EPERM unlink）...`)
+  spawnSync('taskkill', ['/PID', String(childPid), '/F'], { stdio: 'ignore', shell: false })
+  for (let i = 0; i < 20; i++) {
+    // 同步等待 500ms：独立线程不可用（spawnSync 阻塞主线程），Atomics.wait 是进程内合法同步休眠
+    try { Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 500) } catch { /* 老内核不支持则空转 */ }
+    if (!probe().includes('node.exe')) {
+      console.log('[install-all] 服务已停止；安装完成后由壳侧（restart_by_mode）拉起。')
+      return
+    }
+  }
+  console.warn('[install-all] ⚠ 服务 10s 内未退出——继续安装；若 EPERM 复发，请退出托盘 dsh-desktop 后重跑安装。')
+}
+
+// pnpm 输出改捕获后回放：stdio inherit 无法同时留存文本，失败时无法做特征诊断。
+// 输出在进程结束后整体回放，安装日志不缺内容。
+function runPnpm(args) {
+  const r = spawnSync(pnpm.cmd, [...pnpm.args, ...args], { cwd: profileDir, encoding: 'utf8', shell: process.platform === 'win32' })
+  if (r.stdout) process.stdout.write(r.stdout)
+  if (r.stderr) process.stderr.write(r.stderr)
+  return r
+}
+
+// 失败特征诊断（守护移交要求）：把笼统失败变成可执行指向。
+function diagnosePnpmFailure(r) {
+  const text = `${r.stdout ?? ''}
+${r.stderr ?? ''}`
+  if (/EPERM[\s\S]{0,300}?unlink/i.test(text) && /libvips|sharp-win32/i.test(text)) {
+    console.error('[install-all] ✗ 特征命中：EPERM unlink libvips/sharp DLL——dsh web 服务未停或文件被占用（守护台账 #4-#17）。')
+    console.error('[install-all]   处理：退出托盘 dsh-desktop（任务管理器确认无 dsh-desktop.exe）后重试安装。')
+  } else if (/EPERM[\s\S]{0,200}?(open|unlink)[\s\S]{0,200}?_cacache/i.test(text)) {
+    console.error('[install-all] ✗ 特征命中：npm 缓存 EPERM——多为安全软件拦截 node.exe 写盘（2026-09-24 定案），属机器安全层问题域，与本安装器无关。')
+  }
+}
+
 console.log(`[install-all] manifest updated (${RELEASE ? AVAILABLE.size : PLUGINS.length} packages${RELEASE ? ' from GitHub Releases' : ''}), running pnpm install (via ${pnpm.via}${pnpm.version ? ' ' + pnpm.version.text : ''})...`)
-let result = spawnSync(pnpm.cmd, [...pnpm.args, 'install'], { cwd: profileDir, stdio: 'inherit', shell: process.platform === 'win32' })
+stopDshWebService()
+let result = runPnpm(['install'])
 // 锁文件自愈重试：历史失败残留的锁文件条目可能损坏，pnpm 会直接拒装。--fix-lockfile
 // 原地重建坏条目；--no-frozen-lockfile 防 CI 环境变量误开冻结模式。
 // 注意（2026-09-25）：--fix-lockfile 治不了「远程 URL tarball 缺 integrity」的 pnpm 回归
@@ -587,7 +643,7 @@ let result = spawnSync(pnpm.cmd, [...pnpm.args, 'install'], { cwd: profileDir, s
 // 此重试仅作为通用锁文件自愈兜底保留。
 if (result.status !== 0) {
   console.log('[install-all] pnpm install failed — retrying once with --fix-lockfile --no-frozen-lockfile ...')
-  result = spawnSync(pnpm.cmd, [...pnpm.args, 'install', '--fix-lockfile', '--no-frozen-lockfile'], { cwd: profileDir, stdio: 'inherit', shell: process.platform === 'win32' })
+  result = runPnpm(['install', '--fix-lockfile', '--no-frozen-lockfile'])
 }
 
 // pnpm 9 on Windows creates broken junctions for cross-drive absolute link:
@@ -686,13 +742,14 @@ if (RELEASE && !installOk) {
     }
     writeFileSync(manifestPath, `${JSON.stringify(manifest2, null, 2)}\n`)
     console.log('[install-all] GitHub 直连失败：Release URL 已切 ghfast 镜像，重试 pnpm install …')
-    const retry = spawnSync(pnpm.cmd, [...pnpm.args, 'install'], { cwd: profileDir, stdio: 'inherit', shell: process.platform === 'win32' })
+    const retry = runPnpm(['install'])
     installOk = retry.status === 0 && linksOk()
     if (installOk) console.log('[install-all] 镜像重试成功。')
   }
 }
 if (!installOk) {
   console.error('[install-all] install failed, see output above.')
+  diagnosePnpmFailure(result)
   process.exit(1)
 }
 
