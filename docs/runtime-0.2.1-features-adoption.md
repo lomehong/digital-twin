@@ -1,6 +1,6 @@
 # 官方 DSH 0.2.1-alpha 新能力 × 数字分身套件 采纳分析
 
-> 基线：官方 0.2.1-alpha.1（克隆）/ alpha.2（运行时已升级）vs 0.2.0-rc.2（套件原基线）。
+> 基线：官方 0.2.1-alpha.1（克隆工作树）+ alpha.2 增量（运行时已升级至 alpha.2）vs 0.2.0-rc.2（套件原基线）。
 > 分析日期：2026-10-10。方法：全仓 defineTool 扫描（66 工具）+ 包清单能力地图 + 与套件使用面对照。
 
 ## 一、官方新能力全景（套件未用部分）
@@ -41,15 +41,20 @@
 
 ## 二、决策点（需要主人裁决）
 
-### 决策 1：agent-team（官方原生）vs 自建 task-board+yuyi
+### 层级定位（2026-10-10 主人指正后修订）
 
-官方 0.2.1 起原生提供 send_message/spawn_teammate/team_task_*/wait_agent + 协作 UI——
-功能面与我们的 task-board（审批治理）+ yuyi（跨 agent 通信）高度重叠。
+**dsh-yuyi 与官方 agent-team 是互补的不同层级，不存在竞争**：
 
-- **自建优势**：IM 审批闭环（企微直达）、L0-L3 治理分级、中国本地化（企微/御驿）、已验证生产运行
-- **官方优势**：随运行时演进零维护、协作 UI 原生、与其他官方能力（subagent/workflow）原生集成
-- **建议**：短期保持自建（生产已验证），中期观察官方 agent-team 成熟度；两者不互斥
-  （官方 team 工具已在 preset 里 disabled 状态挂载，需要时启用即可）
+- 官方 agent-team：**同一运行时实例内部**的 agent 协作（spawn/task/message 均为进程内会话）
+- dsh-yuyi：**异构/异地 agent 之间的协同**——跨运行时实现（opencode/codex/claude-code/dsh 任何
+  agent 皆可接入）、跨机器、跨信任边界（经 hub wss://yuyi.hzins.com + Owner 御驿令牌体系）
+
+前者是「室内协作」，后者是「跨组织协作」。初版分析误判「战略重叠」，已撤回。
+
+### 决策 1（修订后）：无竞争关系，各自演进
+
+自建 task-board+yuyi 体系继续按生产验证的路径演进；官方 agent-team 作为同实例内的
+原生能力按需启用（已在 preset 中 disabled 挂载），二者服务不同边界，无需二选一。
 
 ### 决策 2：第一批采纳清单（我的建议排序）
 
@@ -66,3 +71,15 @@
 - rc.2 → 0.2.1-alpha.x 在套件全部集成面（userQuestions/llm/session/web/shell）源码零变更
 - 运行时已在 0.2.1-alpha.2 实测运行正常（今日冒烟通过）
 - 宪章 §0 全模式注册模式已在 dsh-memory 0.3.0 / dsh-mind 0.10.38 两处实测
+
+## 四、alpha.2 增量（alpha.1 → alpha.2，基于运行时安装树盘点）
+
+| 新增包 | 推断能力 | 套件相关性 |
+|---|---|---|
+| experimental-worktree / tool-worktree | git worktree 隔离工作区（多 agent 并行改代码互不踩踏） | 套件开发提效；分身并行任务场景待评估 |
+| experimental-cot-translation / client-ui-cot-translation / translator | 思维链翻译展示 | 官方 UI 能力，与套件无直接交集 |
+| tool-working-directory / working-directory | 会话级工作目录管理 | 低（我们已有 workspace 机制） |
+| experimental-terminal-bundle | 终端组合 | 低 |
+| dsh-session-title-all-prompts-llm | 会话标题生成变体 | 低 |
+
+结论：alpha.2 增量不改变采纳分析结论；alpha.1 版分析的能力地图与优先级全部有效。
