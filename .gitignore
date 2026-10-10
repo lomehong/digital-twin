@@ -18,3 +18,7 @@ dsh-computer/
 
 # 分身运行时抓取缓存（会话工作产物，不入库）
 .tmp-fetch/
+.research/
+*.tgz
+docs/wechat-on-cloud-analysis.md
+docs/wechat-web-integration-research.md
