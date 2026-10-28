@@ -22,3 +22,7 @@ dsh-computer/
 *.tgz
 docs/wechat-on-cloud-analysis.md
 docs/wechat-web-integration-research.md
+.tmp-coucou/
+contracts.tmp.ts
+executor.tmp.ts
+*.tmp.ts
