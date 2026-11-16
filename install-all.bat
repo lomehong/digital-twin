@@ -790,13 +790,39 @@ if (existsSync(architectStampPath)) {
     while ((m = re.exec(text)) !== null) {
       const name = m[1].trim()
       if (name === 'cordis:group') continue
-      const segs = name.split('/')
-      const pkgName = segs[0].startsWith('@') ? segs.slice(0, 2).join('/') : segs[0]
-      const resolvable = [profileNm, mirrorAudit].some((root) => existsSync(join(root, pkgName, 'package.json')))
-      if (!resolvable) {
-        auditErrors.push(`${label}: 行 name: '${name}' 在解析链上不存在——该行会让整份组合拒绝挂载（发布 tarball 前先修模板）`)
-      }
+      const why = rowProblem(name)
+      if (why !== null) auditErrors.push(`${label}: 行 name: '${name}' 无法解析（${why}）——该行会让整份组合拒绝挂载（发布 tarball 前先修模板）`)
     }
+  }
+  /** 行 name 的包必须存在；带子路径时该子路径还必须在包 exports 里。
+   *  0.2.2 事故：dsh-tool-subagent-control 收回 ./list-agents 子路径，旧审计只核
+   *  「包存在」→ 放过 → 生产预设整份不可挂载（never started）。 */
+  const pkgDirOn = (pkgName) => {
+    for (const root of [profileNm, mirrorAudit]) {
+      const dir = join(root, pkgName)
+      if (existsSync(join(dir, 'package.json'))) return dir
+    }
+    return null
+  }
+  const rowProblem = (name) => {
+    const segs = name.split('/')
+    const pkgName = segs[0].startsWith('@') ? segs.slice(0, 2).join('/') : segs[0]
+    const subpath = segs.slice(pkgName.split('/').length).join('/')
+    const dir = pkgDirOn(pkgName)
+    if (dir === null) return `包 '${pkgName}' 不在解析链上`
+    if (subpath === '') return null
+    let manifest
+    try { manifest = JSON.parse(readFileSync(join(dir, 'package.json'), 'utf8')) } catch { return null }
+    const map = manifest.exports
+    if (map === undefined || map === null || typeof map !== 'object' || Array.isArray(map)) return null
+    const key = `./${subpath}`
+    if (key in map) return null
+    for (const pattern of Object.keys(map)) {
+      if (!pattern.includes('*')) continue
+      const [pre, post] = pattern.split('*')
+      if (key.startsWith(pre) && key.endsWith(post ?? '')) return null
+    }
+    return `包 ${pkgName} 未导出 '${key}'（exports: ${Object.keys(map).join(', ')}）`
   }
   const isClientArtifactAudit = (file, libDir) => {
     const f = file.toLowerCase()
@@ -830,6 +856,43 @@ if (existsSync(architectStampPath)) {
     }
     walk(libDir)
   }
+  // 预设行已迁到代码（agentPresets.register(presetDefinition())）：tarball 里真正
+  // 生效的是 lib/*.js 里的 `{ id, name }` 字面量，只审 YAML 看不到它。
+  // 2026-11 事故：0.9.1 tarball 的 list-agents 行正是这样漏过闸门、让数字分身预设
+  // 整份挂不上；条件行（运行时按可解析性跳过）在字面量上方标注 preset-row:conditional。
+  const CODE_ROW_RE = /\{\s*id:\s*['"]([^'"]+)['"]\s*,\s*name:\s*['"]([^'"]+)['"]/g
+  const PKG_SPEC_RE = /^(@[a-z0-9][a-z0-9._-]*\/)?[a-z0-9][a-z0-9._-]*(\/[a-z0-9._-]+)*$/
+  const auditPresetCodeRows = (pkgDir, label) => {
+    const libDir = join(pkgDir, 'lib')
+    if (!existsSync(libDir)) return
+    const walk = (dir) => {
+      let entries
+      try { entries = readdirSync(dir) } catch { return }
+      for (const entry of entries) {
+        if (entry.endsWith('.map') || entry.endsWith('.d.ts')) continue
+        const full = join(dir, entry)
+        let st
+        try { st = statSync(full) } catch { continue }
+        if (st.isDirectory()) { walk(full); continue }
+        if (!entry.endsWith('.js') || isClientArtifactAudit(full, libDir)) continue
+        let text = ''
+        try { text = readFileSync(full, 'utf8') } catch { continue }
+        CODE_ROW_RE.lastIndex = 0
+        let m
+        while ((m = CODE_ROW_RE.exec(text)) !== null) {
+          const spec = m[2].trim()
+          if (spec === 'cordis:group' || !PKG_SPEC_RE.test(spec)) continue
+          const why = rowProblem(spec)
+          if (why === null) continue
+          const conditional = text.slice(Math.max(0, m.index - 400), m.index).includes('preset-row:conditional')
+          if (!conditional) {
+            auditErrors.push(`${label}: 预设行 name: '${spec}' 无法解析（${why}）——该行会让整份预设挂载被拒（never started）`)
+          }
+        }
+      }
+    }
+    walk(libDir)
+  }
   for (const { pkg } of PLUGINS) {
     const dir = join(profileNm, ...pkg.split('/'))
     if (!existsSync(join(dir, 'package.json'))) continue
@@ -851,6 +914,7 @@ if (existsSync(architectStampPath)) {
       walkPresets(presetsDir, 0)
     }
     auditImports(dir, `运行时 ${pkg}`)
+    auditPresetCodeRows(dir, `预设代码 ${pkg}`)
   }
   if (auditErrors.length > 0) {
     for (const e of auditErrors) console.error(`[ERROR] ${e}`)

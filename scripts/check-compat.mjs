@@ -216,6 +216,64 @@ function auditRuntimeImports(pkgDir, label) {
   }
 }
 
+// ─────────────────── A2. 代码内预设行审计 ───────────────────
+// 预设从 YAML 迁到代码（agentPresets.register(presetDefinition())）之后，A 段只能看到
+// 仓库里剩下的 YAML 组合文件——预设行真正的来源是 TS 里的行字面量，A/B/C 三段会全绿，
+// 而生产环境整份预设仍可能不可挂载。2026-11 实测事故：dsh 0.2.2 把
+// `@deepseek-ai/dsh-tool-subagent-control/list-agents` 收回主入口，行只存在于
+// dsh-twin/src/index.ts 里 → 该行 never started → 数字分身预设整份被拒。
+// 本段扫 src（无 src 时扫 lib）里的 `{ id: 'row', name: '<spec>' }` 字面量，按同一
+// 解析链核对包与 exports 子路径。运行时按可解析性 gating 的条件行需在原文件行上方
+// 标注 `preset-row:conditional`，命中时降级为 WARN（提示确认 gating 真的生效）。
+const CODE_ROW_RE = /\{\s*id:\s*['"]([^'"]+)['"]\s*,\s*name:\s*['"]([^'"]+)['"]/g
+const CONDITIONAL_MARKER = 'preset-row:conditional'
+const PKG_SPEC_RE = /^(@[a-z0-9][a-z0-9._-]*\/)?[a-z0-9][a-z0-9._-]*(\/[a-z0-9._-]+)*$/
+
+/** 包内 src/lib 的源码文件（跳过测试、类型声明、浏览器半产物）。 */
+function codeRowFiles(dir, out = []) {
+  let entries
+  try { entries = readdirSync(dir) } catch { return out }
+  for (const entry of entries) {
+    if (entry === 'node_modules' || entry.startsWith('.')) continue
+    const full = join(dir, entry)
+    let st
+    try { st = statSync(full) } catch { continue }
+    if (st.isDirectory()) {
+      if (entry === 'client' || entry === 'tests' || entry === '__tests__') continue
+      codeRowFiles(full, out)
+      continue
+    }
+    if (/\.(ts|tsx|mts|cts|js|mjs|cjs)$/.test(entry) && !/\.(d\.ts|test\.(ts|tsx|js)|spec\.(ts|tsx|js))$/.test(entry)) out.push(full)
+  }
+  return out
+}
+
+function auditPresetCodeRows(pkgDir, label) {
+  const srcDir = join(pkgDir, 'src')
+  const libDir = join(pkgDir, 'lib')
+  const root = existsSync(srcDir) ? srcDir : (existsSync(libDir) ? libDir : null)
+  if (root === null) return
+  for (const file of codeRowFiles(root)) {
+    let text
+    try { text = readFileSync(file, 'utf8') } catch { continue }
+    CODE_ROW_RE.lastIndex = 0
+    let m
+    while ((m = CODE_ROW_RE.exec(text)) !== null) {
+      const spec = m[2].trim()
+      if (spec === 'cordis:group' || !PKG_SPEC_RE.test(spec)) continue
+      const rowLabel = `${label} 行 ${m[1]} (${spec})`
+      const conditional = text.slice(Math.max(0, m.index - 400), m.index).includes(CONDITIONAL_MARKER)
+      const resolved = resolveRowName(spec, [join(pkgDir, 'node_modules')])
+      if (resolved.ok) continue
+      if (conditional) {
+        warn(`${rowLabel}: 条件行，当前解析链上不可解析 —— 运行时应按可解析性跳过（确认 gating 真实生效，勿只按“包已安装”判定）`)
+      } else {
+        error(`${label}: 预设行 name: '${spec}'（${file.replace(REPO, '')}）在解析链上不可解析 —— 该行会让整份预设挂载被拒（never started）`)
+      }
+    }
+  }
+}
+
 // ─────────────────── C. 预设漂移审计 ───────────────────
 function rowNames(file) {
   const text = readFileSync(file, 'utf8')
@@ -334,6 +392,8 @@ for (const suite of SUITES) {
     for (const dir of candidates) {
       if (existsSync(join(dir, 'package.json'))) {
         auditRuntimeImports(dir, `运行时 ${dir.replace(REPO, '')}`)
+        // A2. 代码内预设行（编程注册的预期组合；YAML 已不再是唯一来源）
+        auditPresetCodeRows(dir, `预设行 ${dir.replace(REPO, '')}`)
       }
     }
   }
