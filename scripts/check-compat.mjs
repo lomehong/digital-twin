@@ -324,6 +324,110 @@ function auditPresetDrift(spec) {
   }
 }
 
+// ─────────────────── D. 宿主服务级 invoke 契约审计 ───────────────────
+// 2026-11-16 事故防复发：宿主 0.2.2-rc.3 把 InvokeRemoteRequest.peer 升为必填
+// （"every carrier and in-process caller names it explicitly"），而既有审计只对比
+// wire 面产物哈希——wire 路径由载体自动补 peer，哈希一致、套件进程内调用全灭。
+// 服务级契约（插件进程内 typertGateway.invoke 的请求形状）必须单独审计：
+//  D1. 读已装宿主 InvokeRemoteRequest 的必填字段集与核心版本，与基线文件
+//      （scripts/host-invoke-contract.baseline.json）比对——漂移 = WARN
+//      （宿主自愈升级绕过人工闭环时，install-all/check-compat 闸门会带出提醒）。
+//  D2. 宿主要求必填字段（如 peer）而套件内消费 typertGateway 的包 lib 无任何
+//      该字段装配痕迹 → ERROR（v0.10.4 事故形态：包裹装层整层缺失）。
+//      逐调用点覆盖由各包单测保证，本段只拦整层缺失。
+const INVOKE_TYPES_RE = /export interface InvokeRemoteRequest \{([\s\S]*?)\n\}/
+const dshInstallRoot = dirname(HOME) // app-data 根（HOME=app-data\home）
+const dshBundledScope = join(dshInstallRoot, 'node', 'node_modules', '@deepseek-ai', 'dsh', 'node_modules')
+function resolveHostPkg(name) {
+  const candidates = [
+    join(mirrorScope, name),
+    join(profileNodeModules, name),
+    join(dshBundledScope, name),
+  ]
+  for (const dir of candidates) {
+    if (pkgOk(dir)) return dir
+  }
+  return null
+}
+function readCoreVersion() {
+  try {
+    const v = readFileSync(join(dshInstallRoot, 'last-core-version'), 'utf8').trim()
+    if (v !== '') return v
+  } catch { /* 回落 dsh 元包版本 */ }
+  try {
+    return String(JSON.parse(readFileSync(join(dshBundledScope, '..', 'package.json'), 'utf8')).version ?? '')
+  } catch { return '' }
+}
+function auditHostInvokeContract() {
+  const gwPkg = resolveHostPkg('@deepseek-ai/dsh-api-gateway')
+  if (gwPkg === null) {
+    warn('宿主契约: @deepseek-ai/dsh-api-gateway 不在解析链上，服务级 invoke 契约审计跳过')
+    return
+  }
+  const typesFile = join(gwPkg, 'lib', 'types', 'types.d.ts')
+  let required = []
+  try {
+    const text = readFileSync(typesFile, 'utf8')
+    const m = INVOKE_TYPES_RE.exec(text)
+    if (m !== null) {
+      const fieldRe = /readonly\s+(\w+)(\?)?\s*:/g
+      let fm
+      while ((fm = fieldRe.exec(m[1])) !== null) {
+        if (fm[2] === undefined) required.push(fm[1])
+      }
+    }
+  } catch (e) {
+    warn(`宿主契约: 无法读取 ${typesFile}（${e.message}），审计跳过`)
+    return
+  }
+  if (required.length === 0) {
+    warn('宿主契约: 未能从 InvokeRemoteRequest 识别必填字段（结构可能已变）——人工复核 types.d.ts 并更新基线')
+    return
+  }
+  // D1. 基线比对（必填字段集 + 核心版本）
+  const baselineFile = join(scriptDir, 'host-invoke-contract.baseline.json')
+  let baseline
+  try {
+    baseline = JSON.parse(readFileSync(baselineFile, 'utf8'))
+  } catch {
+    warn(`宿主契约: 基线缺失（${baselineFile.replace(REPO, '')}）——以当前已装宿主创建基线并提交`)
+    return
+  }
+  const prev = new Set(baseline.invokeRemoteRequestRequired ?? [])
+  const added = required.filter((f) => !prev.has(f))
+  const removed = [...prev].filter((f) => !required.includes(f))
+  if (added.length > 0 || removed.length > 0) {
+    warn(`宿主契约: InvokeRemoteRequest 必填字段漂移（新增 [${added.join(', ')}] 移除 [${removed.join(', ')}]）——复核套件网关封装（gateway/host-runner lib）并更新基线`)
+  }
+  const coreNow = readCoreVersion()
+  if (coreNow !== '' && typeof baseline.coreVersion === 'string' && baseline.coreVersion !== '' && baseline.coreVersion !== coreNow) {
+    warn(`宿主契约: 核心版本 ${baseline.coreVersion} → ${coreNow}（自愈升级可能已绕过套件重验）——重跑本审计并 install-all 重装套件`)
+  }
+  // D2. 套件消费面装配检查（仅当宿主要求 peer）
+  if (!required.includes('peer')) return
+  for (const pkgName of readdirSync(REPO)) {
+    if (pkgName === 'node_modules' || pkgName.startsWith('.')) continue
+    const pkgDir = join(REPO, pkgName)
+    try { if (!statSync(pkgDir).isDirectory()) continue } catch { continue }
+    const candidates = [pkgDir, join(pkgDir, 'im-channel')]
+    for (const dir of candidates) {
+      const libDir = join(dir, 'lib')
+      if (!existsSync(libDir) || !existsSync(join(dir, 'package.json'))) continue
+      let usesGateway = false
+      let attachesPeer = false
+      for (const file of walkJsFiles(libDir)) {
+        let text
+        try { text = readFileSync(file, 'utf8') } catch { continue }
+        if (text.includes('typertGateway') || text.includes('TypertGateway')) usesGateway = true
+        if (/peer:\s*[A-Za-z_$][\w$]*/.test(text)) attachesPeer = true
+      }
+      if (usesGateway && !attachesPeer) {
+        error(`宿主契约: ${dir.replace(REPO, '')} 消费 typertGateway 但 lib 无任何 peer 装配——宿主要求 invoke 必带 peer；进程内调用须经 connection.createPeer 构造 owner Peer 并随 spec 注入（2026-11-16 事故形态）`)
+      }
+    }
+  }
+}
+
 // ─────────────────── 套件识别 ───────────────────
 const shippedStandard = join(mirrorScope, '@deepseek-ai', 'dsh-agent-presets', 'presets', 'standard', 'agent.cordis.yml')
 const SUITES = []
@@ -411,6 +515,8 @@ for (const suite of SUITES) {
   // C. 漂移
   for (const spec of suite.drift) auditPresetDrift(spec)
 }
+// D. 宿主服务级 invoke 契约（全局一次，不随套件重复）
+auditHostInvokeContract()
 
 // 汇总
 console.log('')

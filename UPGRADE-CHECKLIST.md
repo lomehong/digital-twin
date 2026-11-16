@@ -58,3 +58,9 @@ install-all.bat            rem 内置 check-compat 闸门，审计不过会中�
 - 判定：0 warning～若干 warning 通过；任何 ERROR 中止
 - 白名单：预设漂移的"多出来源外行"在 SUITES 配置的 `allowExtras` 里维护
   （物化器按安装状态追加的可选行都登记在内）
+- **D 段（2026-11-16 新增）**：宿主服务级 invoke 契约审计——读已装宿主
+  `InvokeRemoteRequest` 必填字段与核心版本，比对基线
+  `scripts/host-invoke-contract.baseline.json`（漂移 = WARN，宿主自愈升级绕过
+  人工闭环时的重验提醒）；宿主要求 peer 而套件 typertGateway 消费包 lib 无
+  peer 装配 = ERROR（心智瘫痪事故形态）。宿主升级后若基线漂移：复核套件
+  gateway/host-runner 封装 → 更新基线并提交。

@@ -1,0 +1,6 @@
+{
+  "verifiedAt": "2026-11-16",
+  "coreVersion": "0.2.2-rc.3",
+  "invokeRemoteRequestRequired": ["namespace", "method", "args", "peer"],
+  "note": "宿主 InvokeRemoteRequest 必填字段基线（check-compat D 段比对来源）。必填字段或核心版本漂移 → WARN 提醒重验套件网关封装；peer 必填时代，套件内消费 typertGateway 的包 lib 必须有 peer 装配（connection.createPeer owner Peer）。2026-11-16 心智瘫痪事故防复发。"
+}
