@@ -55,6 +55,15 @@ const warn = (msg) => warnings.push(msg)
 const mirrorScope = join(HOME, 'profiles', 'node_modules')
 const profileNodeModules = join(HOME, 'profiles', PROFILE, 'node_modules')
 const homeNodeModules = join(HOME, 'node_modules')
+// 宿主本体（dsh 应用自身）的包根。桌面版把 @deepseek-ai/* 平铺在 <home>/../node/node_modules
+// 下；老布局才嵌在 dsh/node_modules 里。<home>/profiles/node_modules 的镜像链接指向后者，
+// 在桌面版上会全部悬空（2026-11 实测：315 条镜像 314 条悬空）——只认镜像会把宿主自带的行
+// 全判成「包不存在」，让兼容闸门在升级后误报 20+ 条 ERROR。两个布局都收，顺序：profile →
+// 宿主平铺 → 宿主嵌套 → 镜像。
+const hostNodeModules = [
+  join(HOME, '..', 'node', 'node_modules'),
+  join(HOME, '..', 'node', 'node_modules', '@deepseek-ai', 'dsh', 'node_modules'),
+].filter((p) => existsSync(p))
 
 /** 检查包根存在且带 package.json。 */
 function pkgOk(pkgDir) {
@@ -75,6 +84,7 @@ function resolveRowName(name, extraRoots = []) {
     ...extraRoots,
     profileNodeModules,
     homeNodeModules,
+    ...hostNodeModules,
     pkgName.startsWith('@deepseek-ai/') ? mirrorScope : null,
   ].filter(Boolean)
   for (const root of roots) {
@@ -208,7 +218,8 @@ function auditRuntimeImports(pkgDir, label) {
         const inOwn = pkgOk(join(ownNodeModules, pkgName))
         const inMirror = pkgOk(join(mirrorScope, pkgName))
         const inProfile = pkgOk(join(profileNodeModules, pkgName))
-        if (!inOwn && !inMirror && !inProfile) {
+        const inHost = hostNodeModules.some((root) => pkgOk(join(root, pkgName)))
+        if (!inOwn && !inMirror && !inProfile && !inHost) {
           error(`${label}: 运行时 import '${pkgName}' 不存在于宿主镜像/解析链 —— 启动即 ERR_MODULE_NOT_FOUND（若宿主已移除该包，需迁移代码）`)
         }
       }

@@ -413,7 +413,8 @@ for (const item of PLUGINS) {
   const bundleRoots = [
     join(home, 'profiles', 'node_modules'),
     join(profileDir, 'node_modules'),
-    join(home, '..', 'node', 'node_modules', '@deepseek-ai', 'dsh', 'node_modules'), // 宿主 node 安装布局：home 的同级 node 目录
+    join(home, '..', 'node', 'node_modules'), // 桌面版宿主布局：@deepseek-ai/* 平铺在 home 同级 node 目录
+    join(home, '..', 'node', 'node_modules', '@deepseek-ai', 'dsh', 'node_modules'), // 老布局：嵌在 dsh 包内
   ].filter((r) => existsSync(r))
   const canResolve = (name) => bundleRoots.some((r) => existsSync(join(r, ...name.split('/'), 'package.json')))
   const droppedBundles = manifest.dsh.profile.bundles.filter((b) => b.startsWith('@deepseek-ai/') && !canResolve(b))
@@ -433,17 +434,31 @@ for (const item of PLUGINS) {
 // 钉到宿主版本后：解析恒成立、版本与宿主一致、pnpm 复用宿主同一 store 实体，
 // 插件与宿主共用同一份 harness 模块（单例语义正确）。
 // link 模式则清理该字段——两个通道互相切换时不留残留，manifest 始终只有当前形态。
+// 宿主包根的候选位置：桌面版把 @deepseek-ai/* 平铺在 <home>/../node/node_modules 下，
+// 老布局才嵌在 dsh/node_modules 里。<home>/profiles/node_modules 的镜像链接指向后者，
+// 桌面版上会全部悬空（2026-11 实测：315 条镜像 314 条悬空）——只认镜像会让锚定表近乎
+// 为空，pnpm 便会按 semver 去 registry 找预发布版 → ERR_PNPM_NO_MATCHING_VERSION。
+// 顺序：镜像优先（宿主自建的那层语义），其次宿主平铺，最后宿主嵌套。
+function hostPackageScopes() {
+  return [
+    join(home, 'profiles', 'node_modules', '@deepseek-ai'),
+    join(home, '..', 'node', 'node_modules', '@deepseek-ai'),
+    join(home, '..', 'node', 'node_modules', '@deepseek-ai', 'dsh', 'node_modules', '@deepseek-ai'),
+  ].filter((scope) => existsSync(scope))
+}
 function hostHarnessVersions() {
-  const scope = join(home, 'profiles', 'node_modules', '@deepseek-ai')
   const out = {}
-  if (!existsSync(scope)) return out
-  for (const entry of readdirSync(scope)) {
-    const manifestPath = join(scope, entry, 'package.json')
-    if (!existsSync(manifestPath)) continue
-    try {
-      const version = JSON.parse(readFileSync(manifestPath, 'utf8')).version
-      if (typeof version === 'string' && version !== '') out[`@deepseek-ai/${entry}`] = version
-    } catch { /* 读不了的条目跳过：锚定是加固，不是链路必需 */ }
+  for (const scope of hostPackageScopes()) {
+    for (const entry of readdirSync(scope)) {
+      const manifestPath = join(scope, entry, 'package.json')
+      if (!existsSync(manifestPath)) continue
+      try {
+        const version = JSON.parse(readFileSync(manifestPath, 'utf8')).version
+        if (typeof version !== 'string' || version === '') continue
+        const key = `@deepseek-ai/${entry}`
+        if (out[key] === undefined) out[key] = version
+      } catch { /* 读不了的条目跳过：锚定是加固，不是链路必需 */ }
+    }
   }
   return out
 }
@@ -797,8 +812,15 @@ if (existsSync(architectStampPath)) {
   /** 行 name 的包必须存在；带子路径时该子路径还必须在包 exports 里。
    *  0.2.2 事故：dsh-tool-subagent-control 收回 ./list-agents 子路径，旧审计只核
    *  「包存在」→ 放过 → 生产预设整份不可挂载（never started）。 */
+  // 宿主包根：桌面版平铺在 <home>/../node/node_modules，老布局嵌在 dsh/node_modules。
+  // 镜像层悬空时（桌面版实测）只有这两条能解析宿主自带的预设行——缺了会把每一行都
+  // 判成「包不在解析链上」，让升级后的 GitHub 安装以 compat audit FAILED 收场。
+  const hostNmAudit = [
+    join(home, '..', 'node', 'node_modules'),
+    join(home, '..', 'node', 'node_modules', '@deepseek-ai', 'dsh', 'node_modules'),
+  ].filter((p) => existsSync(p))
   const pkgDirOn = (pkgName) => {
-    for (const root of [profileNm, mirrorAudit]) {
+    for (const root of [profileNm, ...hostNmAudit, mirrorAudit]) {
       const dir = join(root, pkgName)
       if (existsSync(join(dir, 'package.json'))) return dir
     }
@@ -848,7 +870,7 @@ if (existsSync(architectStampPath)) {
           let m
           while ((m = re.exec(text)) !== null) {
             const pkgName = m[1]
-            const ok = [ownNm, profileNm, mirrorAudit].some((root) => existsSync(join(root, pkgName, 'package.json')))
+            const ok = [ownNm, profileNm, ...hostNmAudit, mirrorAudit].some((root) => existsSync(join(root, pkgName, 'package.json')))
             if (!ok) auditErrors.push(`${label}: 运行时 import '${pkgName}' 不存在于宿主镜像/解析链——启动即 ERR_MODULE_NOT_FOUND`)
           }
         }
