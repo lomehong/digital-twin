@@ -36,17 +36,35 @@ function argOf(flag, fallback) {
   return i >= 0 && process.argv[i + 1] ? process.argv[i + 1] : fallback
 }
 // Desktop home layouts: newer releases use dsh-desktop\home, legacy used
-// dsh-desktop-app-data\home. Probe both before falling back to ~/.dsh.
+// dsh-desktop-app-data\home. 两者可能同时存在且只有一个是活的——按固定顺序探测会
+// 读到过期目录（2026-11 实测：dsh-desktop\home 停在 9 月，活动 home 是 app-data）。
+// 因此优先取 profiles/<profile>/package.json 最新的那个；需要精确控制时用 --home。
+const PROFILE = argOf('--profile', process.env.DSH_PROFILE ?? 'web')
 const desktopHomes = [
   join(process.env.LOCALAPPDATA ?? '', 'dsh-desktop', 'home'),
   join(process.env.LOCALAPPDATA ?? '', 'dsh-desktop-app-data', 'home'),
 ]
-const HOME = resolve(argOf('--home', process.env.DSH_HOME ?? (desktopHomes.find((p) => existsSync(p)) ?? join(process.env.USERPROFILE ?? '.', '.dsh'))))
-const PROFILE = argOf('--profile', process.env.DSH_PROFILE ?? 'web')
+function pickDesktopHome() {
+  const existing = desktopHomes.filter((p) => existsSync(p))
+  if (existing.length === 0) return undefined
+  let best = existing[0]
+  let bestTime = -1
+  for (const candidate of existing) {
+    let time = -1
+    try { time = statSync(join(candidate, 'profiles', PROFILE, 'package.json')).mtimeMs } catch { time = -1 }
+    if (time > bestTime) { best = candidate; bestTime = time }
+  }
+  return best
+}
+const HOME = resolve(argOf('--home', process.env.DSH_HOME ?? (pickDesktopHome() ?? join(process.env.USERPROFILE ?? '.', '.dsh'))))
 const REPO = resolve(argOf('--repo', dirname(scriptDir)))
 
 const errors = []
 const warnings = []
+// 组合/预设行的 name: 只可能是包名（可带子路径）。YAML 里还有大量同名的普通字段
+// ——预设显示名（如「安全工程师」）、工具名等——它们不是包，不能当行解析。若不过滤，
+// 闸门会把显示名判成「解析链上不存在」并报 ERROR（2026-11 实测安全工程师预设）。
+const ROW_SPEC_RE = /^(@[a-z0-9][a-z0-9._-]*\/)?[a-z0-9][a-z0-9._-]*(\/[a-z0-9._-]+)*$/
 const error = (msg) => errors.push(msg)
 const warn = (msg) => warnings.push(msg)
 
@@ -128,7 +146,7 @@ function auditCompositionFile(file, label, extraRoots = []) {
   const seen = new Set()
   while ((m = ROW_NAME_RE.exec(text)) !== null) {
     const name = m[1].trim()
-    if (name === 'cordis:group' || seen.has(name)) continue
+    if (name === 'cordis:group' || !ROW_SPEC_RE.test(name) || seen.has(name)) continue
     seen.add(name)
     const r = resolveRowName(name, extraRoots)
     if (!r.ok) {
@@ -238,7 +256,6 @@ function auditRuntimeImports(pkgDir, label) {
 // 标注 `preset-row:conditional`，命中时降级为 WARN（提示确认 gating 真的生效）。
 const CODE_ROW_RE = /\{\s*id:\s*['"]([^'"]+)['"]\s*,\s*name:\s*['"]([^'"]+)['"]/g
 const CONDITIONAL_MARKER = 'preset-row:conditional'
-const PKG_SPEC_RE = /^(@[a-z0-9][a-z0-9._-]*\/)?[a-z0-9][a-z0-9._-]*(\/[a-z0-9._-]+)*$/
 
 /** 包内 src/lib 的源码文件（跳过测试、类型声明、浏览器半产物）。 */
 function codeRowFiles(dir, out = []) {
@@ -271,7 +288,7 @@ function auditPresetCodeRows(pkgDir, label) {
     let m
     while ((m = CODE_ROW_RE.exec(text)) !== null) {
       const spec = m[2].trim()
-      if (spec === 'cordis:group' || !PKG_SPEC_RE.test(spec)) continue
+      if (spec === 'cordis:group' || !ROW_SPEC_RE.test(spec)) continue
       const rowLabel = `${label} 行 ${m[1]} (${spec})`
       const conditional = text.slice(Math.max(0, m.index - 400), m.index).includes(CONDITIONAL_MARKER)
       const resolved = resolveRowName(spec, [join(pkgDir, 'node_modules')])

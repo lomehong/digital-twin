@@ -804,7 +804,9 @@ if (existsSync(architectStampPath)) {
     let m
     while ((m = re.exec(text)) !== null) {
       const name = m[1].trim()
-      if (name === 'cordis:group') continue
+      // 只把「像包名」的 name: 当行——YAML 里的预设显示名（如「安全工程师」）不是包，
+      // 否则会在升级后被判成解析不到的行、让安装以假 ERROR 中止。
+      if (name === 'cordis:group' || !PKG_SPEC_RE.test(name)) continue
       const why = rowProblem(name)
       if (why !== null) auditErrors.push(`${label}: 行 name: '${name}' 无法解析（${why}）——该行会让整份组合拒绝挂载（发布 tarball 前先修模板）`)
     }
